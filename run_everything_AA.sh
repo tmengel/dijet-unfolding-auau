@@ -7,9 +7,9 @@ source "$script_dir/setup_env.sh"
 
 conesize="${1:-3}"
 cent="${2:-0}"
-config="${3:-binning_AA.config}"
+config="${3:-$DIJET_CONFIG_PATH/binning_AA.config}"
+export AUAU_CONFIG="$config"
 
-mkdir -p logs final_plots systematic_plots uncertainties
 
 system="AA_cent_${cent}"
 required=(
@@ -47,14 +47,14 @@ fi
 
 if [[ "${RUN_AA_LEGACY_DRAWSYS:-1}" == "1" ]]; then
     echo "Drawing AA systematics with coherent COMBDown/COMBUp flow variations"
-    root -l -b -q "drawSys_AA.C(${conesize}, ${cent})" > "logs/drawSys_AA_cent${cent}.log" 2>&1
+    root -l -b -q "drawSys_AA.C(${conesize}, ${cent})" 
 fi
 
 echo "Drawing aggregate delta-phi COMB modulation diagnostic"
-root -l -b -q "drawCOMBModulation_AA.C(${conesize}, ${cent})" > "logs/drawCOMBModulation_AA_cent${cent}.log" 2>&1
+root -l -b -q "drawCOMBModulation_AA.C(${conesize}, ${cent})" 
 
 echo "Drawing AA-only final plots for cone=${conesize}, cent=${cent}"
-root -l -b -q "drawFinalUnfold_AA_only.C(${conesize}, ${cent}, \"${config}\")" > "logs/drawFinalUnfold_AA_cent${cent}.log" 2>&1
+root -l -b -q "drawFinalUnfold_AA_only.C(${conesize}, ${cent}, \"${config}\")"
 
 echo "Done. Key outputs:"
 find final_plots systematic_plots uncertainties -maxdepth 1 -type f \

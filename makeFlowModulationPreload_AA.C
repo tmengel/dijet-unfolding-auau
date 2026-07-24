@@ -123,7 +123,7 @@ void makeFlowModulationPreload_AA(
   const std::string down_config = "binning_COMBDown_AA.config",
   const std::string up_config = "binning_COMBUp_AA.config")
 {
-  read_binning nominalBinning("binning_AA.config");
+  read_binning nominalBinning(std::getenv("AUAU_CONFIG"));
   read_binning downBinning(down_config);
   read_binning upBinning(up_config);
   const int nbins = nominalBinning.get_nbins();

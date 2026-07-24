@@ -181,8 +181,8 @@ void drawSimulationDphi(const TString &inputPath, const TString &sample,
   rb.get_pt_bins(ptBins.get());
   const double signalCut = rb.get_dphicut();
 
-  read_binning downBinning("binning_COMBDown_AA.config");
-  read_binning upBinning("binning_COMBUp_AA.config");
+  read_binning downBinning(rb.get_code_location() + "/configs/binning_COMBDown_AA.config");
+  read_binning upBinning(rb.get_code_location() + "/configs/binning_COMBUp_AA.config");
   const std::array<double, 3> v22Scales = { 1.0, downBinning.get_flow_sys(), upBinning.get_flow_sys()};
   const std::array<double, 3> v33Scales = { 1.0, downBinning.get_flow_v33_sys(), upBinning.get_flow_v33_sys()};
 

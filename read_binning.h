@@ -19,7 +19,7 @@ public:
       tntuple_location = std::getenv("DIJET_TNTUPLE_PATH");
       code_location = std::getenv("DIJET_UNFOLDING_PATH");
       sim_location = std::getenv("AUAU_SIM_PATH");
-      jesr_location = std::getenv("JESR_PATH");	
+      auau_config = std::getenv("AUAU_CONFIG");
     }
   std::string get_tntuple_location() 
   {
@@ -260,8 +260,9 @@ public:
   std::string sim_location = ".";
   std::string jesr_location = ".";
   std::string code_location = ".";
+  std::string auau_config = ".";
   
-  float sample_boundary_goal[4] = {13.99, 19.99, 29.99, 100};
+  float sample_boundary_goal[4] = {9.99, 19.99, 29.99, 100};
 
   float sample_boundary[4] = {0, 0, 0, 100};
 

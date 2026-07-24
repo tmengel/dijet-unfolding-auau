@@ -9,7 +9,7 @@ clean:
 	rm -rf build/*
 
 preprocess:
-	./run_preprocess.sh
+	./preprocess.sh
 
 # full from-ntuples unfold plots closure:
 # 	./scripts/run_workflow.sh $@

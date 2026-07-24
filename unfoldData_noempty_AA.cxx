@@ -25,9 +25,10 @@ int unfoldData_noempty_AA(const std::string configfile = "binning_AA.config", co
     
   read_binning rb(configfile.c_str());
 
-  std::string data_file = rb.get_tntuple_location() + "/TNTUPLE_DIJET_r0" + std::to_string(cone_size) + "_v10_1_492_2024p020_v007_gl10-all.root";
-  if (ispp)
-    data_file = rb.get_tntuple_location() + "/TNTUPLE_DIJET_r0" + std::to_string(cone_size) + "_v6_6_ana468_2024p012_v001_gl10-all.root";
+  // std::string data_file = rb.get_tntuple_location() + "/TNTUPLE_DIJET_r0" + std::to_string(cone_size) + "_v10_1_492_2024p020_v007_gl10-all.root";
+  std::string data_file = std::getenv("TNUPLE_DATA_FILE");
+  // if (ispp)
+    // data_file = rb.get_tntuple_location() + "/TNTUPLE_DIJET_r0" + std::to_string(cone_size) + "_v6_6_ana468_2024p012_v001_gl10-all.root";
   
   float mbd_vertex;
   float pt1_reco;

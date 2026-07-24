@@ -40,29 +40,36 @@ int createResponse_noempty_AA(
   read_binning rb(configfile.c_str());
 
   std::string system_string = (ispp ? "pp" : "AA_cent_" + std::to_string(centrality_bin));
+  std::string j10_file = std::getenv("TNUPLE_SIM_FILE_JET10");
+  std::string j20_file = std::getenv("TNUPLE_SIM_FILE_JET20");
+  std::string j30_file = std::getenv("TNUPLE_SIM_FILE_JET30");
+  std::cout << "Using matched simulation files:" << std::endl;
+  std::cout << "  Jet10: " << j10_file << std::endl;
+  std::cout << "  Jet20: " << j20_file << std::endl;
+  std::cout << "  Jet30: " << j30_file << std::endl;
 
-  std::string j10_file = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v15_10_new_ProdA_2024-00000030.root";
-  std::string j20_file = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v15_20_new_ProdA_2024-00000030.root";
-  std::string j30_file = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v15_30_new_ProdA_2024-00000030.root";
-  if (ispp)
-    {
-      j10_file = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v6_10_new_ProdA_2024-00000021.root";
-      j20_file = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v6_20_new_ProdA_2024-00000021.root";
-      j30_file = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v6_30_new_ProdA_2024-00000021.root";
-    }
-  if (!ispp)
-    {
-      std::string j10_sumeT = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v15_10_new_ProdA_2024-00000030_sumeT.root";
-      std::string j20_sumeT = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v15_20_new_ProdA_2024-00000030_sumeT.root";
-      std::string j30_sumeT = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v15_30_new_ProdA_2024-00000030_sumeT.root";
-      if (std::ifstream(j10_sumeT).good() && std::ifstream(j20_sumeT).good() && std::ifstream(j30_sumeT).good())
-        {
-          std::cout << "Using sumeT-enabled matched trees" << std::endl;
-          j10_file = j10_sumeT;
-          j20_file = j20_sumeT;
-          j30_file = j30_sumeT;
-        }
-    }
+//   std::string j10_file = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v15_10_new_ProdA_2024-00000030.root";
+//   std::string j20_file = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v15_20_new_ProdA_2024-00000030.root";
+//   std::string j30_file = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v15_30_new_ProdA_2024-00000030.root";
+//   if (ispp)
+//     {
+//       j10_file = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v6_10_new_ProdA_2024-00000021.root";
+//       j20_file = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v6_20_new_ProdA_2024-00000021.root";
+//       j30_file = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v6_30_new_ProdA_2024-00000021.root";
+//     }
+//   if (!ispp)
+//     {
+//       std::string j10_sumeT = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v15_10_new_ProdA_2024-00000030_sumeT.root";
+//       std::string j20_sumeT = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v15_20_new_ProdA_2024-00000030_sumeT.root";
+//       std::string j30_sumeT = rb.get_tntuple_location() + "/TREE_MATCH_r0" + std::to_string(cone_size) + "_v15_30_new_ProdA_2024-00000030_sumeT.root";
+//       if (std::ifstream(j10_sumeT).good() && std::ifstream(j20_sumeT).good() && std::ifstream(j30_sumeT).good())
+//         {
+//           std::cout << "Using sumeT-enabled matched trees" << std::endl;
+//           j10_file = j10_sumeT;
+//           j20_file = j20_sumeT;
+//           j30_file = j30_sumeT;
+//         }
+//     }
 
   float maxpttruth[3];
   float pt1_truth[3];
@@ -134,9 +141,13 @@ int createResponse_noempty_AA(
       n_events[i] = b_n_events;
 
     }
-  float cs_10 = (2.889e-6);
-  float cs_20 = 5.4067742e-8;
-  float cs_30 = (2.505e-9);
+	// 0.000003997, 5.4067742e-8, 2.505e-9};
+//   float cs_10 = (2.889e-6);
+//   float cs_20 = 5.4067742e-8;
+//   float cs_30 = (2.505e-9);
+	float cs_10 = (0.000003997);
+  	float cs_20 = 5.4067742e-8;
+  	float cs_30 = (2.505e-9);
   
   float scale_factor[3];
   scale_factor[0] = (n_events[2]/n_events[0]) * cs_10/cs_30;
@@ -912,7 +923,7 @@ int createResponse_noempty_AA(
       
 	      RooUnfoldBayes   unfold (&rooResponsehist, h_flat_reco_to_unfold_skim, iter + 1);    // OR
 
-	      h_flat_unfold_skim[iter] = (TH1D*) unfold.Hreco();
+	      h_flat_unfold_skim[iter] = (TH1D*) unfold.Hunfold();
 	      std::cout <<" Nbins skim reco = "<<h_flat_unfold_skim[iter]->GetNbinsX()<<std::endl;
 	      h_flat_unfold_pt1pt2[iter] = (TH1D*) h_flat_truth_pt1pt2->Clone();
 	      h_flat_unfold_pt1pt2[iter]->Reset();

@@ -63,7 +63,7 @@ void drawSys_AA(const int cone_size = 3, const int centrality_bin = 0)
   gStyle->SetOptStat(0);
   dlutility::SetyjPadStyle();
 
-  read_binning rb("binning_AA.config");
+  read_binning rb(std::getenv("AUAU_CONFIG"));
 
   bool ispp = (centrality_bin < 0);
   std::string system_string = (ispp?"pp":"AA_cent_" + std::to_string(centrality_bin));

@@ -164,8 +164,8 @@ void makeMatchedTreesInclusiveAuAu(
         // "%s/TREE_MATCH_r0%d_v15_%d_new_ProdA_2024-00000030_sumeT.root",
         // outputDirectory.c_str(), cone_size, sampleIds[sample]);
       const std::string path = Form(
-        "%s/TREE_MATCH_r0%d_%s_%d.root",
-        outputDirectory.c_str(), cone_size, suffix.c_str(), sampleIds[sample]);
+        "%s/TNTUPLE_DIJET_SIM_r0%d_jet%d_%s.root",
+        outputDirectory.c_str(), cone_size, sampleIds[sample] , suffix.c_str() );
       outputs[sample].file.reset(TFile::Open(path.c_str(), "RECREATE"));
       if (!outputs[sample].file || outputs[sample].file->IsZombie())
         {

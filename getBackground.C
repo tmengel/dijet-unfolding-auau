@@ -144,28 +144,6 @@ void getBackground(
   std::vector<struct jet> myrecojets_all;
 
   int total_entries = t->GetEntries();
-  int first_entry = 0;
-  if (const char *first_entry_env = std::getenv("DIJET_DATA_FIRST_ENTRY"))
-    {
-      const int requested_first_entry = std::atoi(first_entry_env);
-      if (requested_first_entry > 0 && requested_first_entry < total_entries)
-        first_entry = requested_first_entry;
-    }
-  int entries = total_entries - first_entry;
-  if (const char *max_events_env = std::getenv("DIJET_MAX_DATA_EVENTS"))
-    {
-      const int max_events = std::atoi(max_events_env);
-      if (max_events > 0 && max_events < entries)
-        {
-          entries = max_events;
-        }
-    }
-  if (first_entry > 0 || entries < total_entries)
-    {
-      std::cout << "Proof/sample mode: processing background entries [" << first_entry << ", "
-                << first_entry + entries << ") from " << total_entries
-                << " total entries via DIJET_DATA_FIRST_ENTRY/DIJET_MAX_DATA_EVENTS." << std::endl;
-    }
 
   std::pair<int, float> id_leaders[2];
 
@@ -214,39 +192,38 @@ void getBackground(
   TF1 *fcut = new TF1("fcut","[0]+[1]*TMath::Exp(-[2]*x)",0.0,100.0);
   fcut->SetParameters(2.5,36.2,0.035);
 
-  for (int i = 0; i < entries; i++)
+  for (int i = 0; i < total_entries; i++)
     {
-      t->GetEntry(first_entry + i);
+		t->GetEntry(i);
 
-      if (i % 100000 == 0)
-        std::cout << "Event: " << i << " / " << entries << "\r" << std::flush;
-      if (fabs(mbd_vertex_z) > vertex_cut) continue;
+		if (i % 100000 == 0) std::cout << "Event: " << i << " / " << total_entries << "\r" << std::flush;
+		if (fabs(mbd_vertex_z) > vertex_cut) continue;
 
-      if (centrality < icentrality_bins[centrality_bin] || centrality >= icentrality_bins[centrality_bin+1]) continue;
+		if (centrality < icentrality_bins[centrality_bin] || centrality >= icentrality_bins[centrality_bin+1]) continue;
 
-      int nrecojets = reco_jet_pt->size();
-      // this is the reco index for the leading and subleading jet
-      myrecojets.clear();
-      myrecojets_all.clear();
+		int nrecojets = reco_jet_pt->size();
+		// this is the reco index for the leading and subleading jet
+		myrecojets.clear();
+		myrecojets_all.clear();
 
-      int bad_event = 0;
-      bool found_reco_dijet = false;
-      int njet_good = 0;
-      int njet_good_all = 0;
-      float cut_value = fcut->Eval(centrality);
-      for (int j = 0; j < nrecojets;j++)
-	{
-	  if (reco_jet_pt->at(j) < reco_subleading_cut) continue;
-	  if (reco_jet_e->at(j) < 0) continue;
-	  if (reco_jet_e_unsub->at(j) < 0) continue;
-	  if (fabs(reco_jet_eta->at(j)) > etacut) continue;
-	  float pt_unsub = reco_jet_pt_unsub->at(j) - reco_jet_pt->at(j);
+		int bad_event = 0;
+		bool found_reco_dijet = false;
+		int njet_good = 0;
+		int njet_good_all = 0;
+		float cut_value = fcut->Eval(centrality);
+      	for (int j = 0; j < nrecojets;j++)
+		{
+			if (reco_jet_pt->at(j) < reco_subleading_cut) continue;
+			if (reco_jet_e->at(j) < 0) continue;
+			if (reco_jet_e_unsub->at(j) < 0) continue;
+			if (fabs(reco_jet_eta->at(j)) > etacut) continue;
+			float pt_unsub = reco_jet_pt_unsub->at(j) - reco_jet_pt->at(j);
 
-	  if (pt_unsub > cut_value)
-	    {
-	      bad_event = 1;
-	      continue;
-	    }
+	  		if (pt_unsub > cut_value)
+			{
+			bad_event = 1;
+			continue;
+			}
 
 	  njet_good++;
 

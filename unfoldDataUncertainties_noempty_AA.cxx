@@ -16,7 +16,12 @@ using std::endl;
 #include "read_binning.h"
 #include "histo_opps.h"
 
-int unfoldDataUncertainties_noempty_AA(const int niterations = 20, const int cone_size = 4, const int centrality_bin = 0, const int prior = 0)
+int unfoldDataUncertainties_noempty_AA(
+  const int niterations = 20, 
+  const int cone_size = 4, 
+  const int centrality_bin = 0, 
+  const int prior = 0
+)
 {
 
   std::string sysname = "nominal";
@@ -34,10 +39,12 @@ int unfoldDataUncertainties_noempty_AA(const int niterations = 20, const int con
   bool ispp = (centrality_bin < 0);
   std::string system_string = (ispp ? "pp" : "AA_cent_" + std::to_string(centrality_bin));
 
-  read_binning rb("binning_AA.config");
-  std::string data_file = rb.get_tntuple_location() + "/TNTUPLE_DIJET_AA_r0" + std::to_string(cone_size) + ".root";
-  if (ispp)
-    data_file = rb.get_tntuple_location() + "/TNTUPLE_DIJET_r0" + std::to_string(cone_size) + "_v6_6_ana468_2024p012_v001_gl10-all.root";
+  // read_binning rb("binning_AA.config");
+  read_binning rb(std::getenv("AUAU_CONFIG"));
+  // std::string data_file = rb.get_tntuple_location() + "/TNTUPLE_DIJET_AA_r0" + std::to_string(cone_size) + ".root";
+  std::string data_file = std::getenv("TNUPLE_DATA_FILE");
+  // if (ispp)
+    // data_file = rb.get_tntuple_location() + "/TNTUPLE_DIJET_r0" + std::to_string(cone_size) + "_v6_6_ana468_2024p012_v001_gl10-all.root";
 
   Int_t inclusive_sys = rb.get_inclusive_sys();
   if (inclusive_sys)
