@@ -14,7 +14,9 @@ root_setup="gSystem->SetBuildDir(\"$repo/build\",kTRUE); gSystem->AddIncludePath
 # the newline-delimited output as one scalar and pass every macro to a single
 # ROOT `.L` command.
 mapfile -t macros < <(
-  find "$repo" -type f \( -name "*.C" -o -name "*.cxx" \) -print | sort
+  find "$repo" \
+    \( -path "$repo/build" -o -path "$repo/external" \) -prune \
+    -o -type f \( -name "*.C" -o -name "*.cxx" \) -print | sort
 )
 
 for macro in "${macros[@]}"; do

@@ -1,13 +1,10 @@
-# sphenix external dir
-fromDan/
-
 # install
 install/
 
 # for dstlists
 *.list
 
-# for root files
+rootfiles/*
 *.root
 
 # for plots
@@ -123,9 +120,7 @@ logs/
 /.cproject
 /.project
 
-makeHerwig_hist
-makeRawDeltaPhi
-unfoldData_noempty_pp
-unfoldDataUncertainties_noempty_pp
-createEfficiencies
-createResponse_noempty_ppexternal/
+
+.agents
+.codex
+external/
