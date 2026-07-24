@@ -112,7 +112,7 @@ logs/
 *.pcm
 *_Dict.cc
 *.status
-
+*ACLiC*
 # Executables
 *.exe
 *.out

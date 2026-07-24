@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$script_dir"
+source "$script_dir/setup_env.sh"
 
 cone_size="${1:-3}"
-config="${2:-$script_dir/configs/binning_AA.config}"
+config="${2:-${AUAU_CONFIG}}"
 plot_dir="$script_dir/dphi_plots"
-log_dir="$script_dir/logs"
+log_dir="$DIJET_LOG_PATH"
 
 if [[ ! "$cone_size" =~ ^[0-9]+$ ]]; then
   echo "Cone size must be an integer: $cone_size" >&2
@@ -20,11 +20,7 @@ if [[ ! -f "$config" ]]; then
   exit 2
 fi
 
-mkdir -p "$plot_dir" "$log_dir"
 
-# setup_env.sh defines ROOT and the paths consumed by read_binning.
-source "$script_dir/setup_env.sh"
-export AUAU_CONFIG="$config"
 
 # Build the expensive simulation components only when their validated cache is
 # absent.  Set FORCE_SIM_CACHE=1 after changing the simulation or reweights.

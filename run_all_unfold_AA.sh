@@ -33,7 +33,7 @@ export AUAU_SIM_FILE="/home/tmengel/PPG14/rootfiles/v001_20260720/hijing_alljet_
 export AUAU_DATA_NAME=$(basename "$AUAU_DATA_FILE" .root)
 export AUAU_SIM_NAME=$(basename "$AUAU_SIM_FILE" .root)
 
-export AUAU_CONFIG="${DIJET_CONFIG_PATH}/binning_AA.config"
+# export AUAU_CONFIG="${DIJET_CONFIG_PATH}/binning_AA.config"
 
 export TNUPLE_DATA_FILE="${DIJET_TNTUPLE_PATH}/TNTUPLE_DIJET_r0${conesize}_${AUAU_DATA_NAME}.root"
 export TNUPLE_SIM_FILE_JET10="${DIJET_TNTUPLE_PATH}/TNTUPLE_DIJET_SIM_r0${conesize}_jet10_${AUAU_SIM_NAME}.root"

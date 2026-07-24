@@ -860,15 +860,20 @@ std::unique_ptr<TH1D> getCombinedSimulationDphi(
   const double subleadingCut, const bool useTruth)
 {
   const std::array<int, 3> samples = {10, 20, 30};
-  const std::array<double, 3> crossSections = {
-    2.889e-6, 5.4067742e-8, 2.505e-9};
+  // const std::array<double, 3> crossSections = {
+    // 2.889e-6, 5.4067742e-8, 2.505e-9};
+      const std::array<double, 3> crossSections = { 0.000003997, 5.4067742e-8, 2.505e-9};
+
   std::array<double, 3> eventCounts = {0, 0, 0};
   std::array<TString, 3> paths;
+  paths[0] = std::getenv("TNUPLE_SIM_FILE_JET10");
+  paths[1] = std::getenv("TNUPLE_SIM_FILE_JET20");
+  paths[2] = std::getenv("TNUPLE_SIM_FILE_JET30");
   for (std::size_t index = 0; index < samples.size(); ++index)
     {
-      paths[index] = Form(
-        "%s/rootfiles/TREE_MATCH_r%02d_v15_%d_new_ProdA_2024-00000030_sumeT.root",
-        rb.get_code_location().c_str(), coneSize, samples[index]);
+      // paths[index] = Form(
+      //   "%s/rootfiles/TREE_MATCH_r%02d_v15_%d_new_ProdA_2024-00000030_sumeT.root",
+      //   rb.get_code_location().c_str(), coneSize, samples[index]);
       std::unique_ptr<TFile> input(TFile::Open(paths[index], "READ"));
       TTree *stats = input && !input->IsZombie()
         ? dynamic_cast<TTree*>(input->Get("tn_stats")) : nullptr;
@@ -924,9 +929,13 @@ std::unique_ptr<TH1D> getCombinedSimulationDphi_EtaSeperated(
             << ", and truth mode " << (useTruth ? "enabled" : "disabled")
   << std::endl;
 
+
+  paths[0] = std::getenv("TNUPLE_SIM_FILE_JET10");
+  paths[1] = std::getenv("TNUPLE_SIM_FILE_JET20");
+  paths[2] = std::getenv("TNUPLE_SIM_FILE_JET30");
   for (std::size_t index = 0; index < samples.size(); ++index)
   {
-    paths[index] = Form("%s/rootfiles/TREE_MATCH_r%02d_v15_%d_new_ProdA_2024-00000030_sumeT.root", rb.get_code_location().c_str(), coneSize, samples[index]);
+    // paths[index] = Form("%s/rootfiles/TREE_MATCH_r%02d_v15_%d_new_ProdA_2024-00000030_sumeT.root", rb.get_code_location().c_str(), coneSize, samples[index]);
     std::unique_ptr<TFile> input(TFile::Open(paths[index], "READ"));
     TTree *stats = input && !input->IsZombie() ? dynamic_cast<TTree*>(input->Get("tn_stats")) : nullptr;
     float events = 0;
@@ -1016,8 +1025,8 @@ void drawCOMBModulation_AA_v2(const int cone_size = 3,
             << ", subleading cut " << subleadingCut
             << ", and signal cut " << signalCut << std::endl;
 
-  read_binning downBinning("binning_COMBDown_AA.config");
-  read_binning upBinning("binning_COMBUp_AA.config");
+  read_binning downBinning("configs/binning_COMBDown_AA.config");
+  read_binning upBinning("configs/binning_COMBUp_AA.config");
   const std::array<double, 3> v22Scales = { 1.0, downBinning.get_flow_sys(), upBinning.get_flow_sys()};
   const std::array<double, 3> v33Scales = { 1.0, downBinning.get_flow_v33_sys(), upBinning.get_flow_v33_sys()};
   std::cout << "Using v2 scales: " << v22Scales[0] << ", " << v22Scales[1] << ", " << v22Scales[2] << std::endl;

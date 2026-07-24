@@ -4,6 +4,9 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$script_dir"
+source "$script_dir/setup_env.sh"
+cone_size="3"
+config="${AUAU_CONFIG}"
 
 opts=(
   # data_raw
@@ -54,8 +57,7 @@ funcs=(
 opts_str=$(IFS=,; echo "${opts[*]}")
 funcs_str=$(IFS=,; echo "${funcs[*]}")
 
-cone_size="3"
-config="binning_AA.config"
+
 
 plot_dir="$script_dir/dphi_plots"
 log_dir="$script_dir/logs"
@@ -70,8 +72,6 @@ if [[ ! -f "$config" ]]; then
   exit 2
 fi
 
-mkdir -p "$log_dir"
-source "$script_dir/setup_env.sh"
 
 for centrality in 0 1 2 3; do
 

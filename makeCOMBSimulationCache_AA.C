@@ -50,7 +50,8 @@ bool validCOMBSimulationCache(const TString &path)
 void makeCOMBSimulationCache_AA(
   const int cone_size = 3, const int centrality_bin = -1,
   const std::string config = "binning_AA.config",
-  const bool overwrite = false)
+  const bool overwrite = false
+)
 {
   if (centrality_bin < -1 || centrality_bin > 3)
     {

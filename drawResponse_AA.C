@@ -3,7 +3,7 @@
 void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0)
 {
 
-  read_binning rb("binning_AA.config");
+  read_binning rb(std::getenv("AUAU_CONFIG"));
 
   Int_t read_nbins = rb.get_nbins();
 

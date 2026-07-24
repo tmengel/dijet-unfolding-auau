@@ -25,6 +25,10 @@ export DIJET_BUILD_PATH="${DIJET_UNFOLDING_PATH}/build"
 export DIJET_CONFIG_PATH="${DIJET_UNFOLDING_PATH}/configs"
 export DIJET_LOG_PATH="${DIJET_UNFOLDING_PATH}/logs"
 
+export AUAU_CONFIG="${DIJET_CONFIG_PATH}/binning_AA.config"
+
+
+
 mkdir -p "$DIJET_BUILD_PATH"
 
 # Make RooUnfold available to interpreted ROOT macros as well as Makefile builds.
@@ -34,4 +38,4 @@ path_prepend_once LD_LIBRARY_PATH "$ROOUNFOLD_PATH"
 echo "ROOUnfold ROOT path: $ROOUNFOLD_ROOT"
 echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 
-mkdir -p "${DIJET_UNFOLDING_PATH}"/{auau_plots,final_plots,jer,jer_plots,logs,njet,response_matrices,rootfiles,systematic_plots,truth_hists,uncertainties,unfolding_hists,unfolding_plots,vertex,centrality,sumeT}
+mkdir -p "${DIJET_UNFOLDING_PATH}"/{final_plots,jer,logs,dphi_plots,response_matrices,rootfiles,systematic_plots,truth_hists,uncertainties,unfolding_hists,unfolding_plots,vertex,centrality,sumeT}
