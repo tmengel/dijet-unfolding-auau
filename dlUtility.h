@@ -780,7 +780,7 @@ namespace dlutility{
 
   void DrawSPHENIX_Prelim(double xpos, double ypos, float size = 0.04, int ral = 0, int isBeam = 1, int horiz  = 0, int issim = 0, std::string simmc = "HIJING")
   {
-    string sPHENIX_MARK = "#bf{#it{sPHENIX}} #it{Preliminary}";
+    string sPHENIX_MARK = "#bf{#it{sPHENIX}} #it{Internal}";
     //string extratext = "#it{Internal}";
 
     double xpos_diff = 0.12;
@@ -808,7 +808,7 @@ namespace dlutility{
     string sPHENIX_MARK = "#bf{#it{sPHENIX}} #it{Internal}";
     if (prelim)
       {
-	sPHENIX_MARK = "#bf{#it{sPHENIX}} #it{Preliminary}";
+	sPHENIX_MARK = "#bf{#it{sPHENIX}} #it{Internal}";
       }
     //string extratext = "#it{Internal}";
 

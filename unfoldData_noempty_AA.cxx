@@ -563,7 +563,7 @@ int unfoldData_noempty_AA(const std::string configfile = "binning_AA.config", co
     {
       
       RooUnfoldBayes   unfold (rooResponse, h_flat_data_skim, iter + 1);    // OR
-      h_flat_unfold_skim[iter] = (TH1D*) unfold.Hreco();
+      h_flat_unfold_skim[iter] = (TH1D*) unfold.Hunfold();
       std::cout <<" Nbins skim reco = "<<h_flat_unfold_skim[iter]->GetNbinsX()<<std::endl;
       h_flat_unfold_pt1pt2[iter] = (TH1D*) h_flat_truth_pt1pt2->Clone();
       h_flat_unfold_pt1pt2[iter]->Reset();

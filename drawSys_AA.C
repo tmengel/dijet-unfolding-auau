@@ -1660,7 +1660,7 @@ void drawSys_AA(const int cone_size = 3, const int centrality_bin = 0)
 	      h_sys_INCLUSIVE_flip->Rebin(nbins - first_bin, Form("h_rebin_INCLUSIVE_flip_%d_%d", irange, niter), &dxj_bins[first_bin]);
 
 	    }
-	  h_total_sys->GetXaxis()->SetRangeUser(dxj_bins[first_bin], dxj_bins[nbins]);
+	  h_total_sys->GetXaxis()->SetRangeUser(dxj_bins[first_bin+1], dxj_bins[nbins]);
 	  h_total_sys->Draw("p");
 	  h_total_sys_flip->Draw("p same");
 

@@ -303,7 +303,7 @@ int unfoldDataUncertainties_noempty_AA(
       for (int iter = 0; iter < niterations; iter++ )
 	{
 	  RooUnfoldBayes   unfold (&rooResponse, h_flat_data_skim, iter + 1);    // OR
-	  TH1D *h_flat_unfold_skim = (TH1D*) unfold.Hreco();
+	  TH1D *h_flat_unfold_skim = (TH1D*) unfold.Hunfold();
 	  h_flat_unfold_pt1pt2[iter] = (TH1D*) h_flat_truth_pt1pt2->Clone();
 	  h_flat_unfold_pt1pt2[iter]->SetName(Form("h_flat_unfold_pt1pt2_%d", iter));
 	  h_flat_unfold_pt1pt2[iter]->Reset();

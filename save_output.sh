@@ -4,7 +4,7 @@ today=$(date +%Y-%m-%d)
 name="${1:-output_${today}}"
 
 storage_dir="/home/tmengel/PPG14/dijet-unfolding-final/results"
-input_dir="/home/tmengel/PPG14/dijet-unfolding-final/rho_jets"
+input_dir="/home/tmengel/PPG14/dijet-unfolding-final"
 
 this_save="${storage_dir}/${name}_${today}"
 version_tag=1

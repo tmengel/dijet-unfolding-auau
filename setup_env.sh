@@ -24,18 +24,25 @@ export DIJET_TNTUPLE_PATH="${DIJET_UNFOLDING_PATH}/rootfiles"
 export DIJET_BUILD_PATH="${DIJET_UNFOLDING_PATH}/build"
 export DIJET_CONFIG_PATH="${DIJET_UNFOLDING_PATH}/configs"
 export DIJET_LOG_PATH="${DIJET_UNFOLDING_PATH}/logs"
+export AUAU_SIM_PATH="${DIJET_UNFOLDING_PATH}/rootfiles"
 
 export AUAU_CONFIG="${DIJET_CONFIG_PATH}/binning_AA.config"
 
-
-
 mkdir -p "$DIJET_BUILD_PATH"
+
 
 # Make RooUnfold available to interpreted ROOT macros as well as Makefile builds.
 path_prepend_once ROOT_INCLUDE_PATH "${ROOUNFOLD_ROOT}/src"
 path_prepend_once LD_LIBRARY_PATH "$ROOUNFOLD_PATH"
 
+
+# export TNUPLE_DATA_FILE="${DIJET_TNTUPLE_PATH}/TNTUPLE_DIJET_r0${conesize}_${AUAU_DATA_NAME}.root"
+# export TNUPLE_SIM_FILE_JET10="${DIJET_TNTUPLE_PATH}/TNTUPLE_DIJET_SIM_r0${conesize}_jet10_${AUAU_SIM_NAME}.root"
+# export TNUPLE_SIM_FILE_JET20="${DIJET_TNTUPLE_PATH}/TNTUPLE_DIJET_SIM_r0${conesize}_jet20_${AUAU_SIM_NAME}.root"
+# export TNUPLE_SIM_FILE_JET30="${DIJET_TNTUPLE_PATH}/TNTUPLE_DIJET_SIM_r0${conesize}_jet30_${AUAU_SIM_NAME}.root"
+
+
 echo "ROOUnfold ROOT path: $ROOUNFOLD_ROOT"
 echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 
-mkdir -p "${DIJET_UNFOLDING_PATH}"/{final_plots,jer,logs,dphi_plots,response_matrices,rootfiles,systematic_plots,truth_hists,uncertainties,unfolding_hists,unfolding_plots,vertex,centrality,sumeT}
+mkdir -p "${DIJET_UNFOLDING_PATH}"/{final_plots,final_hists,logs,dphi_plots,response_matrices,rootfiles,systematic_plots,truth_hists,uncertainties,unfolding_hists,unfolding_plots,vertex,centrality,sumeT}

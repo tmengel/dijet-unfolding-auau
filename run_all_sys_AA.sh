@@ -5,6 +5,9 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$script_dir"
 source "$script_dir/setup_env.sh"
 
+OPTION_A_SETTINGS="${OPTION_A_SETTINGS:-false}"
+export OPTION_A_SETTINGS
+echo "OPTION_A_SETTINGS=${OPTION_A_SETTINGS}"
 
 conesize=$1
 cent=$2
@@ -22,32 +25,32 @@ case "$(basename "$sysconfig")" in
     *) sys_name=""; response_invariant=0 ;;
 esac
 
-if (( response_invariant )); then
-    # These variations alter the measured signal definition, not detector
-    # smearing.  Reuse the current-run nominal primer response and event
-    # weights, then rebuild the final response with the varied unfolded prior.
-    cp "response_matrices/response_matrix_${system}_r0${conesize}_PRIMER1_nominal.root" \
-       "response_matrices/response_matrix_${system}_r0${conesize}_PRIMER1_${sys_name}.root"
-    root -l -q -b "unfoldData_noempty_AA.cxx(\"${sysconfig}\", 10, ${conesize}, ${cent}, 1)"
-    for directory in vertex centrality sumeT; do
-        cp "${directory}/${directory}_reweight_${system}_r0${conesize}_nominal.root" \
-           "${directory}/${directory}_reweight_${system}_r0${conesize}_${sys_name}.root"
-    done
-    root -l -q -b "createResponse_noempty_AA.cxx(\"${sysconfig}\", 0, 10, ${conesize}, ${cent})"
-    root -l -q -b "unfoldData_noempty_AA.cxx(\"${sysconfig}\", 10, ${conesize}, ${cent})"
-    exit 0
-fi
+# if (( response_invariant )); then
+#     # These variations alter the measured signal definition, not detector
+#     # smearing.  Reuse the current-run nominal primer response and event
+#     # weights, then rebuild the final response with the varied unfolded prior.
+#     cp "response_matrices/response_matrix_${system}_r0${conesize}_PRIMER1_nominal.root" \
+#        "response_matrices/response_matrix_${system}_r0${conesize}_PRIMER1_${sys_name}.root"
+#     root -l -q -b "unfoldData_noempty_AA.cxx(\"${sysconfig}\", 10, ${conesize}, ${cent}, 1)"
+#     for directory in vertex centrality sumeT; do
+#         cp "${directory}/${directory}_reweight_${system}_r0${conesize}_nominal.root" \
+#            "${directory}/${directory}_reweight_${system}_r0${conesize}_${sys_name}.root"
+#     done
+#     root -l -q -b "createResponse_noempty_AA.cxx(\"${sysconfig}\", 0, 10, ${conesize}, ${cent})"
+#     root -l -q -b "unfoldData_noempty_AA.cxx(\"${sysconfig}\", 10, ${conesize}, ${cent})"
+#     exit 0
+# fi
 
-root -l -q -b "createResponse_noempty_AA.cxx(\"${sysconfig}\", 0, 10, ${conesize}, ${cent}, 1)"
+root -l -q -b "createResponse_noempty_AA.cxx(\"${sysconfig}\", 0, 10, ${conesize}, ${cent}, 1, ${OPTION_A_SETTINGS})"
 
 root -l -q -b "unfoldData_noempty_AA.cxx(\"${sysconfig}\", 10, ${conesize}, ${cent}, 1)"
 
 root -l -q -b "getCentralityReweighting.C(${conesize}, ${cent}, \"${sysconfig}\")"
 
-# root -l -q -b "createResponse_noempty_AA.cxx(\"${sysconfig}\", 0, 10, ${conesize}, ${cent}, 2)"
+# root -l -q -b "createResponse_noempty_AA.cxx(\"${sysconfig}\", 0, 10, ${conesize}, ${cent}, 2 , ${OPTION_A_SETTINGS})"
 
 # root -l -q -b "unfoldData_noempty_AA.cxx(\"${sysconfig}\", 10, ${conesize}, ${cent}, 2)"
 
-root -l -q -b "createResponse_noempty_AA.cxx(\"${sysconfig}\", 0, 10, ${conesize}, ${cent})"
+root -l -q -b "createResponse_noempty_AA.cxx(\"${sysconfig}\", 0, 10, ${conesize}, ${cent}, 0, ${OPTION_A_SETTINGS})"
 
 root -l -q -b "unfoldData_noempty_AA.cxx(\"${sysconfig}\", 10, ${conesize}, ${cent})"

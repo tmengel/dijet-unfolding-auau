@@ -20,19 +20,21 @@ opts=(
   # sim_down
   # sim_up
   data_pairs
-  # data_eta
-  data_fit
-  data_background
-  data_background_COMBDown
-  data_background_COMBUp
+  data_eta
+  # data_fit
+  # data_background
+  # data_background_down_alt
+  # data_background_up_alt
+  # data_background_down_alt2
+  # data_background_up_alt2
   # data_nominal
   # data_down
   # data_up
   data_signal_region
   data_normalization_region
   # sim_pairs
-  sim_eta
-  sim_fit
+  # sim_eta
+  # sim_fit
   # sim_background
   # sim_background_COMBDown
   # sim_background_COMBUp
@@ -49,7 +51,7 @@ funcs=(
   # data_flow_fit_nominal
   # data_flow_fit_COMBDown
   # data_flow_fit_COMBUp
-  sim_flow_fit
+  # sim_flow_fit
   # sim_flow_fit_nominal
   # sim_flow_fit_COMBDown
   # sim_flow_fit_COMBUp
@@ -88,10 +90,10 @@ for centrality in 0 1 2 3; do
     fi
   done
 
-  data_log="$log_dir/redrawCOMBModulationDataSim_AA_cent${centrality}.log"
+  data_log="$log_dir/new-redrawCOMBModulationDataSim_AA_cent${centrality}.log"
   
-  echo "Redrawing data centrality $centrality (log: $data_log)"
-  root -l -b -q "drawCOMBDataSimSimple_AA.C+($cone_size,$centrality,\"$opts_str\",\"$funcs_str\", true,\"$config\")" 
+  # echo "Redrawing data centrality $centrality (log: $data_log)"
+  root -l -b -q "drawCOMBDataSimSimple_AA_v2.C($cone_size,$centrality,\"$opts_str\",\"$funcs_str\", true,\"$config\")" 
   
 done
 

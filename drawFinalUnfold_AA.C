@@ -961,26 +961,27 @@ void drawFinalUnfold_AA(const int cone_size = 3, const int centrality_bin = 0, c
     }
 
 
-  TFile *fout = new TFile(Form("%s/final_hists/final_hists_AA_cent_%d_r%02d.root", rb.get_code_location().c_str(), centrality_bin, cone_size),"recreate");
+  TFile *fout = new TFile(Form("%s/final_hists/final_hists_AA_cent_%d_r%02d.root", rb.get_code_location().c_str(), centrality_bin, cone_size),"RECREATE");
   for (int irange = 0; irange < mbins; irange++)
     {
 
       for (int iter = 0;iter < niterations;iter++)
 	{
 
+    fout->cd();
 	  h_final_xj_pp_unfold_range[irange][niter]->SetName(Form("h_final_xj_pp_unfold_range_%d_iter_%d", irange, iter));
 	  g_final_xj_pp_systematics[irange][niter]->SetName(Form("g_final_xj_pp_systematics_range_%d_iter_%d", irange, iter));
 
 	  h_final_xj_unfold_range[irange][niter]->SetName(Form("h_final_xj_unfold_range_%d_iter_%d", irange, iter ));
 	  g_final_xj_systematics[irange][niter]->SetName(Form("g_final_xj_systematics_range_%d_iter_%d", irange, iter));
-	  h_final_xj_pp_unfold_range[irange][niter]->Write();
+    h_final_xj_pp_unfold_range[irange][niter]->Write();
 	  g_final_xj_pp_systematics[irange][niter]->Write();
 	  
 	  h_final_xj_unfold_range[irange][niter]->Write();
 	  g_final_xj_systematics[irange][niter]->Write();
 
 	}
-    }
+  }
   fout->Close();
   return;
 }

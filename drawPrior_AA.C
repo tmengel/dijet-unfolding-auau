@@ -92,14 +92,14 @@ void drawPrior_AA(const int cone_size = 3, const int centrality_bin = 0)
   TH1D *h_nom_flat_truth_pt1pt2 = (TH1D*) fr->Get("h_truth_flat_pt1pt2");
   h_nom_flat_truth_pt1pt2->SetName("h_nom_flat_truth_pt1pt2");
   
-  TString responsepath_p1 = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_PRIMER1.root", centrality_bin, cone_size);
+  TString responsepath_p1 = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_PRIMER1_nominal.root", centrality_bin, cone_size);
   TFile *fr_p1 = new TFile(responsepath_p1.Data(),"r");
   TH1D *h_p1_flat_reco_pt1pt2= (TH1D*) fr_p1->Get("h_reco_flat_pt1pt2");
   h_p1_flat_reco_pt1pt2->SetName("h_p1_flat_reco_pt1pt2");
   TH1D *h_p1_flat_truth_pt1pt2 = (TH1D*) fr_p1->Get("h_truth_flat_pt1pt2");
   h_p1_flat_truth_pt1pt2->SetName("h_p1_flat_truth_pt1pt2");
 
-  TString responsepath_p2 = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_PRIMER2.root", centrality_bin, cone_size);
+  TString responsepath_p2 = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_PRIMER2_nominal.root", centrality_bin, cone_size);
   TFile *fr_p2 = new TFile(responsepath_p2.Data(),"r");
   TH1D *h_p2_flat_reco_pt1pt2= (TH1D*) fr_p2->Get("h_reco_flat_pt1pt2");
   h_p2_flat_reco_pt1pt2->SetName("h_p2_reco_flat_pt1pt2");
@@ -177,9 +177,9 @@ void drawPrior_AA(const int cone_size = 3, const int centrality_bin = 0)
 
   h_nom_xj_truth->SetMaximum(4.5);
   dlutility::SetFont(h_nom_xj_truth, 42, 0.05);
-  //h_nom_xj_reco->Draw("p");
+  h_nom_xj_reco->Draw("p");
   h_nom_xj_truth->Draw("p");
-  //h_p2_xj_reco->Draw("p same");
+  h_p2_xj_reco->Draw("p same");
   h_p1_xj_truth->Draw("p same");
 
   int irange = 1;

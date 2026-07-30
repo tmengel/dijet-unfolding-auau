@@ -51,24 +51,46 @@ namespace
     int style = 1;
     std::string selection;
   };
+
+  std::unique_ptr<TF1> addNormalizedBackground(TH1D *sum, TH1D *pairDphi,
+                             const TF1 &fit, const double v22Scale,
+                             const double v33Scale)
+  {
+    // TF1 normalized(fit);
+    std::unique_ptr<TF1> normalized(static_cast<TF1*>(fit.Clone("normalized")));
+    normalized->SetParameter(1, v22Scale*fit.GetParameter(1));
+    normalized->SetParameter(2, v33Scale*fit.GetParameter(2));
+
+    const int firstBin = pairDphi->FindBin(kNormalizationLow);
+    const int lastBin = pairDphi->FindBin(
+      std::nextafter(kNormalizationHigh, kNormalizationLow));
+    const double dataCounts = pairDphi->Integral(firstBin, lastBin);
+    normalized->SetParameter(0, 1.0);
+    double unitShapeCounts = 0;
+    for (int bin = firstBin; bin <= lastBin; ++bin)
+      unitShapeCounts += normalized->Eval(pairDphi->GetBinCenter(bin));
+    normalized->SetParameter(0, unitShapeCounts > 0
+      ? dataCounts/unitShapeCounts : 0.0);
+    normalized->SetRange(0, TMath::Pi());
+
+    for (int bin = 1; bin <= sum->GetNbinsX(); ++bin)
+      sum->AddBinContent(bin, normalized->Eval(sum->GetBinCenter(bin)));
+
+    return normalized;
+  }
 }
 
-// Available curve names:
-//   data_raw, data_background, data_nominal, data_down, data_up,
-//   sim_raw,  sim_background,  sim_nominal,  sim_down,  sim_up
-//
-// scale_sim_to_data=true scales every displayed simulation component by the
-// raw data/simulation integral ratio in 0.8 <= dphi < 2.5.  The cached weighted
-// counts are never modified.  Set it false to compare absolute weighted counts.
-void drawCOMBDataSimSimple_AA(
-  const int cone_size = 3, const int centrality_bin = 1,
+
+void drawCOMBDataSimSimple_AA_v2(
+  const int cone_size = 3, 
+  const int centrality_bin = 1,
   const std::string curves = "data_raw,data_nominal,sim_raw,sim_nominal",
   const std::string funcs = "data_flow_fit_nominal,data_flow_fit_COMBDown,data_flow_fit_COMBUp",
   const bool scale_sim_to_data = true,
-  const std::string config = "configs/binning_AA.config"
+  const std::string configfile = "binning.config"
 )
 {
-  read_binning rb(config);
+  read_binning rb(std::getenv("AUAU_CONFIG"));
   std::unique_ptr<float[]> ptBins(new float[rb.get_nbins() + 1]);
   rb.get_pt_bins(ptBins.get());
 
@@ -117,10 +139,20 @@ void drawCOMBDataSimSimple_AA(
     std::cerr << "No curves selected" << std::endl;
     return;
   }
-  // std::cout << "Selected curves size: " << selected.size() << std::endl;
+  // for (const auto &name : selectedFuncs)
+  // { 
+  //   if (!validFuncs.count(name))
+  //   {
+  //     std::cerr << "Unknown function '" << name << "'. Available functions:" << std::endl;
+  //     for (const auto &choice : validFuncs) {std::cerr << "  " << choice << std::endl;}
+  //     return;
+  //   }
+  // }
 
   TH1D *dataRaw = dynamic_cast<TH1D*>(dataFile->Get("h_dphi_pairs"));
   TH1D *simRaw = dynamic_cast<TH1D*>(simFile->Get("h_dphi_pairs"));
+  TH1D *dataEta = dynamic_cast<TH1D*>(dataFile->Get("h_dphi_eta_separated"));
+  TH1D *simEta = dynamic_cast<TH1D*>(simFile->Get("h_dphi_eta_separated"));
   if (!dataRaw || !simRaw) return;
   const int firstNormBin = dataRaw->FindBin(0.8);
   const int lastNormBin = dataRaw->FindBin(std::nextafter(2.5, 0.8));
@@ -137,36 +169,6 @@ void drawCOMBDataSimSimple_AA(
     int style;
     bool simulation;
   };
-
-  // data
-  // h_dphi_pairs = exclusive
-  // h_dphi_eta_separated = exclusive w/ |deta| > 0.8
-  // h_dphi_eta_separated_fit = exclusive w/ |deta| > 0.8, fit from 0-2.5
-  // h_flow_background_nominal = fitted modulation from h_dphi_eta_separated_fit scaled to yield of exclusive pairs in 0.8 <= dphi < 2.5
-  // h_flow_background_COMBDown = fitted modulation from h_dphi_eta_separated_fit scaled to yield of exclusive pairs in 0.8 <= dphi < 2.5, with COMBDown variation
-  // h_flow_background_COMBUp = fitted modulation from h_dphi_eta_separated_fit scaled to yield of exclusive pairs in 0.8 <= dphi < 2.5, with COMBUp variation
-  // h_dphi_nominal_subtracted = exclusive pairs - h
-  // h_dphi_COMBDown_subtracted = exclusive pairs - h_flow_background_COMBDown
-  // h_dphi_COMBUp_subtracted = exclusive pairs - h_flow_background_COMBUp
-  // h_signal_region = exclusive pairs in 0 <= dphi < 0.8
-  // h_flow_normalization_region = exclusive pairs in 0.8 <= dphi < 2.5
-
-  // sim 
-  // h_dphi_pairs = exclusive
-  // h_dphi_eta_separated = exclusive w/ |deta| > 0.8
-  // h_dphi_eta_separated_fit = exclusive w/ |deta| > 0.8, fit from 0-2.5
-  // h_flow_background_nominal = fitted modulation from h_dphi_eta_separated_fit scaled to yield of exclusive pairs in 0.8 <= dphi < 2.5
-  // h_flow_background_COMBDown = fitted modulation from h_dphi_eta_separated_fit scaled to yield of exclusive pairs in 0.8 <= dphi < 2.5, with COMBDown variation
-  // h_flow_background_COMBUp = fitted modulation from h_dphi_eta_separated_fit scaled to yield of exclusive pairs in 0.8 <= dphi < 2.5, with COMBUp variation
-  // h_dphi_nominal_subtracted_sim = exclusive pairs - h
-  // h_dphi_COMBDown_subtracted_sim = exclusive pairs - h_flow_background_COMBDown
-  // h_dphi_COMBUp_subtracted_sim = exclusive pairs - h_flow_background_COMBUp
-  // h_signal_region = exclusive pairs in 0 <= dphi < 0.8
-  // h_flow_normalization_region = exclusive pairs in 0.8 <= dphi < 2.5
-  // h_flow_pairs_truth = exclusive pairs from truth-level simulation
-  // h_flow_pairs_eta_separated_truth = exclusive pairs from truth-level simulation w/ |deta| > 0.8
-
-
 
   const std::vector<Definition> definitions = { 
     {"data_pairs", dataFile.get(), "h_dphi_pairs", "Exclusive", kBlack, 1, false},
@@ -198,8 +200,6 @@ void drawCOMBDataSimSimple_AA(
     {"sim_truth_pairs", simFile.get(), "h_dphi_pairs_truth", "Simulation truth raw", kBlack, 1, true},
     {"sim_truth_eta", simFile.get(), "h_dphi_eta_separated_truth", "Simulation truth |#Delta#eta| > 0.8", kBlack, 2, true}
   };
-
-
   const std::vector<Definition> f1_definitions = { 
     {"data_flow_fit", dataFile.get(), "global_flow_fit", "Data flow fit", kOrange + 7, 1, false},
     {"data_flow_fit_nominal", dataFile.get(), "f_flow_fit_0", "Data flow fit (nominal)", kBlack, 1, false},
@@ -214,9 +214,9 @@ void drawCOMBDataSimSimple_AA(
     {"sim_flow_fit_COMBDown", simFile.get(), "f_flow_fit_1_sim", "Simulation flow fit (COMBDown)", kBlack, 2, true},
     {"sim_flow_fit_COMBUp", simFile.get(), "f_flow_fit_2_sim", "Simulation flow fit (COMBUp)", kBlack, 3, true}
   };
-  
   const std::vector<std::string> draw_as_lines = {
-    "data_background", "data_background_COMBDown",
+    "data_background", 
+    "data_background_COMBDown",
     "data_background_COMBUp",
     "data_fit",
     "data_background_down_alt", 
@@ -270,33 +270,6 @@ void drawCOMBDataSimSimple_AA(
     minimum = std::min(minimum, curve.histogram->GetMinimum());
     displayed.push_back(std::move(curve));
   }
-  // std::cout << "Displayed curves size: " << displayed.size() << std::endl;
-  // for (const auto &curve : displayed)
-  // {
-  //   std::cout << "Curve: " << curve.selection << std::endl;
-  // }
-
-  // get the sim eta separted and data eta separated histograms to get the v22 and v33 values
-  // auto data_eta =(TH1D*) dynamic_cast<TH1D*>(dataFile->Get("h_dphi_eta_separated")) -> Clone("data_eta_tmp");
-  // auto sim_eta = (TH1D*)dynamic_cast<TH1D*>(simFile->Get("h_dphi_eta_separated")) -> Clone("sim_eta_tmp");
-  // auto * fit = new TF1("fit", "[0]*(1 + 2*[1]*cos(2*x) + 2*[2]*cos(3*x))", 0, 2.5);
-  // data_eta->Fit(fit, "0RlQ","", 0, 2.5);
-  // double vv22_data = fit->GetParameter(1);
-  // double vv33_data = fit->GetParameter(2);
-  // double vv22_data_err = fit->GetParError(1);
-  // double vv33_data_err = fit->GetParError(2);
-  // sim_eta->Fit(fit, "0RlQ","", 0, 2.5);
-  // double vv22_sim = fit->GetParameter(1);
-  // double vv33_sim = fit->GetParameter(2);
-  // double vv22_sim_err = fit->GetParError(1);
-  // double vv33_sim_err = fit->GetParError(2);
-  // std::cout << "Data v22 = " << vv22_data << " +/- " << vv22_data_err << std::endl;
-  // std::cout << "Data v33 = " << vv33_data << " +/- " << vv33_data_err << std::endl;
-  // std::cout << "Sim v22 = " << vv22_sim << " +/- " << vv22_sim_err << std::endl;
-  // std::cout << "Sim v33 = " << vv33_sim << " +/- " << vv33_sim_err << std::endl;  
-  // std::cout << "Data v22/v33 = " << vv22_data/vv22_sim << std::endl;
-  // std::cout << "Sim v22/v33 = " << vv22_sim/vv33_sim << std::endl;
-  // delete fit;
 
   std::vector<Function> displayedFuncs;
   for (const auto &definition : f1_definitions)
@@ -328,35 +301,110 @@ void drawCOMBDataSimSimple_AA(
   std::vector<double> v33_data;
   std::vector<double> v22_data_err;
   std::vector<double> v33_data_err;
+
+  std::array<std::unique_ptr<TF1>, 6> flow_functions_data;
+  std::array<TH1D*, 6 > flow_background_hist_data;
+  for ( int i = 0; i < 6; ++i )
+  {
+    flow_background_hist_data[i] = new TH1D(Form("flow_background_hist_data_%d", i), Form("flow_background_hist_data_%d", i), 32, 0, TMath::Pi());
+    flow_functions_data[i] = nullptr;
+  }
+
+  std::array<TF1*, 5 > flow_functions_sim;
+
   std::vector<double> v22_sim;
   std::vector<double> v33_sim;
   std::vector<double> v22_sim_err;  
   std::vector<double> v33_sim_err;
+
+  const double flowVar = 0.5;
   for (const auto &name : {"global_flow_fit"})
   {
     TF1 *fit = dynamic_cast<TF1*>(dataFile->Get(name));
     if (!fit)
-      {
-        std::cerr << "Missing " << name << std::endl;
-        return;
-      }
-      v22_data.push_back(fit->GetParameter(1));
-      v33_data.push_back(fit->GetParameter(2));
-      v22_data_err.push_back(fit->GetParError(1));
-      v33_data_err.push_back(fit->GetParError(2));
+    {
+      std::cerr << "Missing " << name << std::endl;
+      return;
+    }
+    
+    // flow_functions_data[0] = (TF1*)fit->Clone("flow_fit_data");
+    flow_functions_data[0] = addNormalizedBackground(flow_background_hist_data[0], dataRaw, *fit, 1.0, 1.0);
+    flow_functions_data[1] = addNormalizedBackground(flow_background_hist_data[1], dataRaw, *fit, 1.0 - flowVar, 1.0 - flowVar);
+    flow_functions_data[2] = addNormalizedBackground(flow_background_hist_data[2], dataRaw, *fit, 1.0 + flowVar, 1.0 + flowVar);
+    flow_functions_data[3] = addNormalizedBackground(flow_background_hist_data[3], dataRaw, *fit, 1.0 - flowVar, 1.0 + flowVar);
+    flow_functions_data[4] = addNormalizedBackground(flow_background_hist_data[4], dataRaw, *fit, 1.0 + flowVar, 1.0 - flowVar);
+    
+    // flow_functions_data[1] ->SetParameter(1, flow_functions_data[1]->GetParameter(1)*(1.0 - flowVar ));
+    // flow_functions_data[1] ->SetParameter(2, flow_functions_data[1]->GetParameter(2)*(1.0 - flowVar ));
+    
+    // flow_functions_data[2] = (TF1*)fit->Clone("flow_fit_data_up1");
+    // flow_functions_data[2] ->SetParameter(1, flow_functions_data[2]->GetParameter(1)*(1.0 + flowVar ));
+    // flow_functions_data[2] ->SetParameter(2, flow_functions_data[2]->GetParameter(2)*(1.0 + flowVar ));
+    
+    // flow_functions_data[3] = (TF1*)fit->Clone("flow_fit_data_down2");
+    // flow_functions_data[3] ->SetParameter(1, flow_functions_data[3]->GetParameter(1)*(1.0 - flowVar ));
+    // flow_functions_data[3] ->SetParameter(2, flow_functions_data[3]->GetParameter(2)*(1.0 + flowVar ));
+
+    // flow_functions_data[4] = (TF1*)fit->Clone("flow_fit_data_up2");
+    // flow_functions_data[4] ->SetParameter(1, flow_functions_data[4]->GetParameter(1)*(1.0 + flowVar ));
+    // flow_functions_data[4] ->SetParameter(2, flow_functions_data[4]->GetParameter(2)*(1.0 - flowVar ));
+
+    v22_data.push_back(fit->GetParameter(1));
+    v33_data.push_back(fit->GetParameter(2));
+    v22_data_err.push_back(fit->GetParError(1));
+    v33_data_err.push_back(fit->GetParError(2));
   }
   for (const auto &name : {"f_flow_fit" })
   {
     TF1 *fit = dynamic_cast<TF1*>(simFile->Get(name));
     if (!fit)
-      {
-        std::cerr << "Missing " << name << std::endl;
-        return;
-      }
-      v22_sim.push_back(fit->GetParameter(1));
-      v33_sim.push_back(fit->GetParameter(2));
-      v22_sim_err.push_back(fit->GetParError(1));
-      v33_sim_err.push_back(fit->GetParError(2));
+    {
+      std::cerr << "Missing " << name << std::endl;
+      return;
+    }
+
+    flow_functions_sim[0] = (TF1*)fit->Clone("flow_fit_sim");
+    flow_functions_sim[1] = (TF1*)fit->Clone("flow_fit_sim_down1");
+    flow_functions_sim[1] ->SetParameter(1, flow_functions_sim[1]->GetParameter(1)*(1.0 - flowVar ));
+    flow_functions_sim[1] ->SetParameter(2, flow_functions_sim[1]->GetParameter(2)*(1.0 - flowVar ));
+    flow_functions_sim[2] = (TF1*)fit->Clone("flow_fit_sim_up1");
+    flow_functions_sim[2] ->SetParameter(1, flow_functions_sim[2]->GetParameter(1)*(1.0 + flowVar ));
+    flow_functions_sim[2] ->SetParameter(2, flow_functions_sim[2]->GetParameter(2)*(1.0 + flowVar ));
+    flow_functions_sim[3] = (TF1*)fit->Clone("flow_fit_sim_down2");
+    flow_functions_sim[3] ->SetParameter(1, flow_functions_sim[3]->GetParameter(1)*(1.0 - flowVar ));
+    flow_functions_sim[3] ->SetParameter(2, flow_functions_sim[3]->GetParameter(2)*(1.0 + flowVar ));
+    flow_functions_sim[4] = (TF1*)fit->Clone("flow_fit_sim_up2");
+    flow_functions_sim[4] ->SetParameter(1, flow_functions_sim[4]->GetParameter(1)*(1.0 + flowVar ));
+    flow_functions_sim[4] ->SetParameter(2, flow_functions_sim[4]->GetParameter(2)*(1.0 - flowVar ));
+
+    flow_functions_data[5] = addNormalizedBackground(flow_background_hist_data[5], dataRaw, *fit, 1.0, 1.0);
+    v22_sim.push_back(fit->GetParameter(1));
+    v33_sim.push_back(fit->GetParameter(2));
+    v22_sim_err.push_back(fit->GetParError(1));
+    v33_sim_err.push_back(fit->GetParError(2));
+  }
+  // add to displayedFuncs
+  for (std::size_t index = 0; index < flow_functions_data.size(); ++index)
+  {
+    Function func;
+    func.function.reset((TF1*)flow_functions_data[index]->Clone(Form("flow_fit_data_%zu", index)));
+    func.label = Form("v22 = %.3f, v33 = %.3f", flow_functions_data[index]->GetParameter(1), flow_functions_data[index]->GetParameter(2));
+    func.color = kRed + (int)index;
+    if (index == flow_functions_data.size()-1) func.color = kCyan + 2;
+    func.function->SetLineColor(func.color);
+    func.function->SetLineWidth(2);
+    func.function->SetLineStyle(2 + (int)index);
+    // func.style = 4;
+    displayedFuncs.push_back(std::move(func));
+  }
+  for (std::size_t index = 0; index < flow_functions_sim.size(); ++index)
+  {
+    Function func;
+    func.function.reset(flow_functions_sim[index]);
+    func.label = Form("Sim flow fit %zu", index);
+    func.color = kOrange + 7;
+    func.style = 3;
+    // displayedFuncs.push_back(std::move(func));
   }
 
   std::cout << "Data v22 = " << v22_data[0] << " +/- " << v22_data_err[0] << std::endl;
@@ -365,10 +413,7 @@ void drawCOMBDataSimSimple_AA(
   std::cout << "Sim v33 = " << v33_sim[0] << " +/- " << v33_sim_err[0] << std::endl;  
   std::cout << "Data v22/v33 = " << v22_data[0]/v22_sim[0] << std::endl;
   std::cout << "Sim v22/v33 = " << v33_data[0]/v33_sim[0] << std::endl;  
-
-
   
-
   gStyle->SetOptStat(0);
   dlutility::SetyjPadStyle();
   displayed.front().histogram->SetTitle(";#Delta#phi;Counts");
@@ -379,13 +424,8 @@ void drawCOMBDataSimSimple_AA(
   canvas.SetRightMargin(0.04);
   canvas.SetTopMargin(0.04);
   canvas.SetBottomMargin(0.12);
-  // for (std::size_t index = 0; index < displayed.size(); ++index)
-  //   displayed[index].histogram->Draw(index == 0 ? "hist" : "hist same");
-  
-
   for (std::size_t index = 0; index < displayed.size(); ++index)
   {
-    // std::cout << "Drawing " << displayed[index].label << " as " << (isSimulation[index] ? "simulation" : "data") << std::endl;
     if (isregion[index])
     {
       // shadeen fill 
@@ -434,9 +474,7 @@ void drawCOMBDataSimSimple_AA(
     // get vn
 
   for (auto &curve : displayed)
-    // legend.AddEntry(curve.histogram.get(), curve.label.c_str(), "l");
   {
-    // std::cout << "Adding legend entry for " << curve.label << std::endl;
     if (isregion[&curve - &displayed[0]])
       continue;
     else if (isSimulation[&curve - &displayed[0]])
@@ -446,8 +484,7 @@ void drawCOMBDataSimSimple_AA(
     else
       legend.AddEntry(curve.histogram.get(), curve.label.c_str(), "pe");
   }
-  for (auto &func : displayedFuncs)
-    legend.AddEntry(func.function.get(), func.label.c_str(), "l");
+  for (auto &func : displayedFuncs) legend.AddEntry(func.function.get(), func.label.c_str(), "l");
   legend.Draw();
 
   dlutility::drawText(Form("Data v_{2,2} = %.3f , v_{3,3} = %.3f", v22_data[0], v33_data[0]), 0.18, 0.66, 0, kBlack, 0.028);

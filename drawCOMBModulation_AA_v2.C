@@ -482,8 +482,7 @@ std::unique_ptr<TH1D> getSimulationDphi(
       if (maxPtTruth < sampleLow || maxPtTruth >= sampleHigh) continue;
       if (centrality < centralityLow || centrality >= centralityHigh) continue;
       if (pt1Reco < leadingCut || pt2Reco < subleadingCut) continue;
-      const double eventWeight = weightAt(centralityWeight.get(), centrality)
-        * weightAt(vertexWeight.get(), vertex) * weightAt(sumETWeight.get(), sumET);
+      const double eventWeight = 1.0 * weightAt(vertexWeight.get(), vertex) * weightAt(sumETWeight.get(), sumET);
       histogram->Fill(dphiReco, eventWeight);
     }
   return histogram;
@@ -862,8 +861,11 @@ std::unique_ptr<TH1D> getCombinedSimulationDphi(
   const std::array<int, 3> samples = {10, 20, 30};
   // const std::array<double, 3> crossSections = {
     // 2.889e-6, 5.4067742e-8, 2.505e-9};
-      const std::array<double, 3> crossSections = { 0.000003997, 5.4067742e-8, 2.505e-9};
-
+    // float cs_10 = 0.000003997;
+  	// float cs_20 = 6.218e-8;
+  	// float cs_30 = 2.505e-9;
+      // const std::array<double, 3> crossSections = { 0.000003997, 5.4067742e-8, 2.505e-9};
+  std::array<double, 3> crossSections = { 0.000003997, 6.218e-8, 2.505e-9};
   std::array<double, 3> eventCounts = {0, 0, 0};
   std::array<TString, 3> paths;
   paths[0] = std::getenv("TNUPLE_SIM_FILE_JET10");
@@ -919,7 +921,8 @@ std::unique_ptr<TH1D> getCombinedSimulationDphi_EtaSeperated(
     // 0.000003997
     // 6.217999999e-8
     //2.502E-9
-  const std::array<double, 3> crossSections = { 0.000003997, 5.4067742e-8, 2.505e-9};
+  // const std::array<double, 3> crossSections = { 0.000003997, 5.4067742e-8, 2.505e-9};
+  const std::array<double, 3> crossSections = { 0.000003997, 6.218e-8, 2.505e-9};
   std::array<double, 3> eventCounts = {0, 0, 0};
   std::array<TString, 3> paths;
   std::cout << "Loading simulation histograms for cone size " << coneSize
@@ -1032,12 +1035,15 @@ void drawCOMBModulation_AA_v2(const int cone_size = 3,
   std::cout << "Using v2 scales: " << v22Scales[0] << ", " << v22Scales[1] << ", " << v22Scales[2] << std::endl;
   std::cout << "Using v3 scales: " << v33Scales[0] << ", " << v33Scales[1] << ", " << v33Scales[2] << std::endl;
 
+  const std::array<double, 4> v22Scales_alt = { 1.5, 1.5, 0.5, 0.5};
+  const std::array<double, 4> v33Scales_alt = { 1.5, 0.5, 1.5, 0.5};
+  std::cout << "Using alternative v2 scales: " << v22Scales_alt[0] << ", " << v22Scales_alt[1] << ", " << v22Scales_alt[2] << ", " << v22Scales_alt[3] << std::endl;
+  std::cout << "Using alternative v3 scales: " << v33Scales_alt[0] << ", " << v33Scales_alt[1] << ", " << v33Scales_alt[2] << ", " << v33Scales_alt[3] << std::endl;
+
   const std::string system = "AA_cent_" + std::to_string(centrality_bin);
   const TString plotDirectory = Form("%s/dphi_plots", rb.get_code_location().c_str());
   gSystem->mkdir(plotDirectory, true);
-  const TString inputPath = Form(
-    "%s/unfolding_hists/unfolding_hists_preload_%s_r%02d_nominal.root", rb.get_code_location().c_str(), system.c_str(), cone_size
-  );
+  const TString inputPath = Form( "%s/unfolding_hists/unfolding_hists_preload_%s_r%02d_nominal.root", rb.get_code_location().c_str(), system.c_str(), cone_size);
   
   std::unique_ptr<TFile> input(TFile::Open(inputPath, "READ"));
   if (!input || input->IsZombie())
@@ -1050,9 +1056,16 @@ void drawCOMBModulation_AA_v2(const int cone_size = 3,
   auto etaSeparated = std::make_unique<TH1D>("h_dphi_eta_separated", ";#Delta#phi;Counts", 32, 0, TMath::Pi());
   auto fittedEtaSeparated = std::make_unique<TH1D>( "h_dphi_eta_separated_fit", ";#Delta#phi;Counts", 32, 0, TMath::Pi());
   std::array<std::unique_ptr<TH1D>, 3> backgrounds;
+  
   for (int variation = 0; variation < 3; ++variation)
   {
     backgrounds[variation] = std::make_unique<TH1D>( Form("h_flow_background_%d", variation), ";#Delta#phi;Counts", 32, 0, TMath::Pi());
+  }
+
+  std::array<std::unique_ptr<TH1D>, 4> backgrounds_alt;
+  for (int variation = 0; variation < 4; ++variation)
+  {
+    backgrounds_alt[variation] = std::make_unique<TH1D>( Form("h_flow_background_alt_%d", variation), ";#Delta#phi;Counts", 32, 0, TMath::Pi());
   }
   
   raw->Sumw2();
@@ -1060,78 +1073,56 @@ void drawCOMBModulation_AA_v2(const int cone_size = 3,
 
   int fittedBins = 0;
   for (int i = leadingBin; i < nbins; ++i)
+  {
     for (int j = subleadingBin; j <= i; ++j)
-      {
-        TH1D *pairDphi = static_cast<TH1D*>(input->Get(Form( "h_dphi_exclusive_%d_%d", i, j)));
-        TH1D *fitSource = static_cast<TH1D*>(input->Get(Form( "h_dphi_eta_inclusive_%d_%d", i, j)));
+    {
+      TH1D *pairDphi = static_cast<TH1D*>(input->Get(Form( "h_dphi_exclusive_%d_%d", i, j)));
+      TH1D *fitSource = static_cast<TH1D*>(input->Get(Form( "h_dphi_eta_inclusive_%d_%d", i, j)));
        
-        if (!pairDphi || !fitSource) continue;
-        raw->Add(pairDphi);
-        etaSeparated->Add(fitSource);
+      if (!pairDphi || !fitSource) continue;
+      raw->Add(pairDphi);
+      etaSeparated->Add(fitSource);
+    }
+  }
+  
 
-        // std::unique_ptr<TH1D> fitHistogram(static_cast<TH1D*>(fitSource->Clone( Form("h_fit_work_%d_%d", i, j))));
-        
-        // fitHistogram->SetDirectory(nullptr);
-        
-        
-        // TF1 fit(Form("flow_fit_%d_%d", i, j),
-        //         "[0]*(1+2*[1]*cos(2*x)+2*[2]*cos(3*x))",
-        //         kFlowFitLow, kFlowFitHigh
-        // );
-        
-        // fit.SetParLimits(0, 0, 10000);
-        // fit.SetParLimits(1, 0, 0.5);
-        // fit.SetParLimits(2, 0, 0.5);
-        // const int firstFitBin = fitHistogram->FindBin(kFlowFitLow);
-        // const int lastFitBin = fitHistogram->FindBin(kFlowFitHigh);
-        // const int fitBinCount = std::max(1, lastFitBin - firstFitBin);
-        // const double fitCounts = fitHistogram->Integral(firstFitBin, lastFitBin);
-        // if (fitCounts < fitBinCount)
-        //   {
-        //     fit.SetParameter(0, fitCounts/fitBinCount);
-        //     fit.FixParameter(1, 0);
-        //     fit.FixParameter(2, 0);
-        //   }
-        // else
-        //   fit.SetParameters(fitCounts/fitBinCount, 0.01, 0.01);
-        // if (fitCounts > 0) fitHistogram->Fit(&fit, "0RlQ");
-        // if (fitCounts > 0 || pairDphi->Integral() > 0) ++fittedBins;
-        // addFitShape(fittedEtaSeparated.get(), fit);
-        // for (int variation = 0; variation < 3; ++variation)
-        //   addNormalizedBackground(backgrounds[variation].get(), pairDphi, fit,
-        //                           v22Scales[variation], v33Scales[variation]);
-      }
+  // add global fit
+  TF1 globalFit("global_flow_fit", "[0]*(1+2*[1]*cos(2*x)+2*[2]*cos(3*x))", kFlowFitLow, kFlowFitHigh);
+  globalFit.SetParLimits(0, 0, 10000);
+  globalFit.SetParLimits(1, 0, 0.5);
+  globalFit.SetParLimits(2, 0, 0.5);
 
-      // add global fit
-      TF1 globalFit("global_flow_fit", "[0]*(1+2*[1]*cos(2*x)+2*[2]*cos(3*x))", kFlowFitLow, kFlowFitHigh);
-      globalFit.SetParLimits(0, 0, 10000);
-      globalFit.SetParLimits(1, 0, 0.5);
-      globalFit.SetParLimits(2, 0, 0.5);
+  const int firstFitBin = etaSeparated->FindBin(kFlowFitLow);
+  const int lastFitBin = etaSeparated->FindBin(kFlowFitHigh);
+  const int fitBinCount = std::max(1, lastFitBin - firstFitBin);
+  const double fitCounts = etaSeparated->Integral(firstFitBin, lastFitBin);
 
-      const int firstFitBin = etaSeparated->FindBin(kFlowFitLow);
-      const int lastFitBin = etaSeparated->FindBin(kFlowFitHigh);
-      const int fitBinCount = std::max(1, lastFitBin - firstFitBin);
-      const double fitCounts = etaSeparated->Integral(firstFitBin, lastFitBin);
+  if (fitCounts < fitBinCount)
+  {
+    globalFit.SetParameter(0, fitCounts/fitBinCount);
+    globalFit.FixParameter(1, 0);
+    globalFit.FixParameter(2, 0);
+  }
+  else
+  {
+    globalFit.SetParameters(fitCounts/fitBinCount, 0.01, 0.01);
+  }
 
-      if (fitCounts < fitBinCount)
-      {
-        globalFit.SetParameter(0, fitCounts/fitBinCount);
-        globalFit.FixParameter(1, 0);
-        globalFit.FixParameter(2, 0);
-      }
-      else
-        globalFit.SetParameters(fitCounts/fitBinCount, 0.01, 0.01);
-      if (fitCounts > 0) etaSeparated->Fit(&globalFit, "0RlQ");
-      // if (fitCounts > 0 || raw->Integral() > 0) ++fittedBins;
-      addFitShape(fittedEtaSeparated.get(), globalFit);
-      // TF1 * fitNorms[3];
-      std::array<std::unique_ptr<TF1>, 3> fitNorms;
-      for (int variation = 0; variation < 3; ++variation)
-      {
-        fitNorms[variation] = addNormalizedBackground(backgrounds[variation].get(), raw.get(), globalFit,
-                                v22Scales[variation], v33Scales[variation]);  
-        fitNorms[variation]->SetName(Form("f_flow_fit_%d", variation));
-      }
+  if (fitCounts > 0) etaSeparated->Fit(&globalFit, "0RlQ");
+  addFitShape(fittedEtaSeparated.get(), globalFit);
+  std::array<std::unique_ptr<TF1>, 3> fitNorms;
+  for (int variation = 0; variation < 3; ++variation)
+  {
+    fitNorms[variation] = addNormalizedBackground(backgrounds[variation].get(), raw.get(), globalFit, v22Scales[variation], v33Scales[variation]);  
+    fitNorms[variation]->SetName(Form("f_flow_fit_%d", variation));
+  }
+
+  std::array<std::unique_ptr<TF1>, 4> fitNorms_alt;
+  for (int variation = 0; variation < 4; ++variation)
+  {
+    fitNorms_alt[variation] = addNormalizedBackground(backgrounds_alt[variation].get(), raw.get(), globalFit, v22Scales_alt[variation], v33Scales_alt[variation]);  
+    fitNorms_alt[variation]->SetName(Form("f_flow_fit_alt_%d", variation));
+  }
 
   if (raw->Integral() <= 0)
   {
@@ -1144,6 +1135,11 @@ void drawCOMBModulation_AA_v2(const int cone_size = 3,
   auto upSubtracted = subtractBackground( raw.get(), backgrounds[2].get(), "h_dphi_COMBUp_subtracted");
   auto normalizationRegion = makeRegion( raw.get(), "h_flow_normalization_region", kNormalizationLow, kNormalizationHigh);
   auto signalRegion = makeRegion(raw.get(), "h_signal_region", signalCut, TMath::Pi() + 1e-6);
+
+  auto upSubtracted_alt = subtractBackground( raw.get(), backgrounds_alt[0].get(), "h_dphi_COMBUp_subtracted_alt");
+  auto downSubtracted_alt = subtractBackground( raw.get(), backgrounds_alt[1].get(), "h_dphi_COMBDown_subtracted_alt");
+  auto upSubtracted_alt2 = subtractBackground( raw.get(), backgrounds_alt[2].get(), "h_dphi_COMBUp_subtracted_alt2");
+  auto downSubtracted_alt2 = subtractBackground( raw.get(), backgrounds_alt[3].get(), "h_dphi_COMBDown_subtracted_alt2");
 
   raw->SetLineColor(kBlack);
   raw->SetLineWidth(2);
@@ -1171,9 +1167,7 @@ void drawCOMBModulation_AA_v2(const int cone_size = 3,
   signalRegion->SetLineStyle(3);
 
   double minimum = 0;
-  for (const TH1D *histogram : {nominalSubtracted.get(), downSubtracted.get(),
-                                upSubtracted.get()})
-    minimum = std::min(minimum, histogram->GetMinimum());
+  for (const TH1D *histogram : {nominalSubtracted.get(), downSubtracted.get(), upSubtracted.get()}) minimum = std::min(minimum, histogram->GetMinimum());
   raw->SetMinimum(std::min(-0.08*raw->GetMaximum(), 1.15*minimum));
   raw->SetMaximum(1.55*raw->GetMaximum());
   raw->GetXaxis()->SetTitleOffset(1.05);
@@ -1198,13 +1192,9 @@ void drawCOMBModulation_AA_v2(const int cone_size = 3,
   float centralityBins[5] = {0};
   rb.get_centrality_bins(centralityBins);
   dlutility::DrawSPHENIX(0.18, 0.91, 0.040);
-  dlutility::drawText(Form("#it{p}_{T,1} #geq %.1f GeV", leadingCut),
-                      0.18, 0.80, 0, kBlack, 0.038);
-  dlutility::drawText(Form("#it{p}_{T,2} #geq %.1f GeV", subleadingCut),
-                      0.18, 0.75, 0, kBlack, 0.038);
-  dlutility::drawText(Form("%.0f - %.0f %%", centralityBins[centrality_bin],
-                           centralityBins[centrality_bin + 1]),
-                      0.18, 0.70, 0, kBlack, 0.038);
+  dlutility::drawText(Form("#it{p}_{T,1} #geq %.1f GeV", leadingCut), 0.18, 0.80, 0, kBlack, 0.038);
+  dlutility::drawText(Form("#it{p}_{T,2} #geq %.1f GeV", subleadingCut), 0.18, 0.75, 0, kBlack, 0.038);
+  dlutility::drawText(Form("%.0f - %.0f %%", centralityBins[centrality_bin], centralityBins[centrality_bin + 1]),  0.18, 0.70, 0, kBlack, 0.038);
 
   TLegend legend(0.47, 0.49, 0.94, 0.93);
   legend.SetBorderSize(0);
@@ -1245,8 +1235,12 @@ void drawCOMBModulation_AA_v2(const int cone_size = 3,
     normalizationRegion->Write();
     output->Write();
     globalFit.Write("global_flow_fit");
-    for (int variation = 0; variation < 3; ++variation)
-      fitNorms[variation]->Write();
+    for (int variation = 0; variation < 3; ++variation) fitNorms[variation]->Write();
+    for (int variation = 0; variation < 4; ++variation) fitNorms_alt[variation]->Write();
+    backgrounds_alt[0]->Write("h_flow_background_COMBUp_alt");
+    backgrounds_alt[1]->Write("h_flow_background_COMBDown_alt");
+    backgrounds_alt[2]->Write("h_flow_background_COMBUp_alt2");
+    backgrounds_alt[3]->Write("h_flow_background_COMBDown_alt2");
   }
 
   // drawSimulationDphi("", "combined", 

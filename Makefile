@@ -6,10 +6,9 @@ build:
 	./build.sh
 
 clean:
-	rm -rf build/*
+	rm -f *.o *.so *.d *.pcm *ACLiC* build/*
 
-preprocess:
-	./preprocess.sh
+
 
 # full from-ntuples unfold plots closure:
 # 	./scripts/run_workflow.sh $@
