@@ -297,9 +297,9 @@ public:
 
   float sub_ue_p0s[3] = { 0.0 , 40.0 , 0.038 };
   
-  // float sample_boundary_goal[4] = {9.99, 19.99, 29.99, 100};
+  float sample_boundary_goal[4] = {9.99, 19.99, 29.99, 100};
 
-  float sample_boundary_goal[4] = {13.99, 19.99, 29.99, 100};
+  // float sample_boundary_goal[4] = {13.99, 19.99, 29.99, 100};
 
   float sample_boundary[4] = {0, 0, 0, 100};
 
