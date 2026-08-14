@@ -1640,8 +1640,8 @@ void drawSys_AA(const int cone_size = 3, const int centrality_bin = 0)
 	  dlutility::SetMarkerAtt(h_total_sys_flip, kBlack, 1, 8);
 
 
-	  h_total_sys->SetMinimum(0.0);
-	  h_total_sys->SetMaximum(2.0);
+	  h_total_sys->SetMinimum(0.5);
+	  h_total_sys->SetMaximum(1.5);
 	  dlutility::SetFont(h_total_sys, 42, 0.06, 0.05, 0.05, 0.05);
 	  h_total_sys->Rebin(nbins - first_bin, Form("h_rebin_sys_%d_%d", irange, niter), &dxj_bins[first_bin]);
 	  h_total_sys_flip->Rebin(nbins - first_bin, Form("h_rebin_sys_flip_%d_%d", irange, niter), &dxj_bins[first_bin]);

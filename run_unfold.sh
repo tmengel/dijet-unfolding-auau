@@ -22,12 +22,18 @@ source "setup_env.sh"
 # docahche=${DO_CACHE:-1}
 # doplots=${DO_PLOTS:-1}
 
+# pids=()
+# for cent in 0 1; do
+#   RUN_UNCERTAINTIES=1 \
+#   RUN_SYSTEMATICS=1 \
+#   RUN_FLOW_SYS=1 \
+#     ./run_all_unfold_AA.sh 3 "$cent" \
+#     > "logs/unfold_cent${cent}.log" 2>&1 &
+#   pids+=("$!")
+# done
 pids=()
-for cent in 0 1; do
-  RUN_UNCERTAINTIES=1 \
-  RUN_SYSTEMATICS=1 \
-  RUN_FLOW_SYS=1 \
-    ./run_all_unfold_AA.sh 3 "$cent" \
+for cent in 0; do
+  bash redo_sys.sh "$cent" \
     > "logs/unfold_cent${cent}.log" 2>&1 &
   pids+=("$!")
 done
@@ -41,15 +47,15 @@ done
 # root -l -b -q "makeCOMBSimulationCache_AA.C+(${conesize},-1,\"${AUAU_CONFIG}\",${force_sim_cache})" > "$dphilogfile" 2>&1
 # wait
 
-pidsd=()
-for cent in 0; do
-  ./run_everything_AA.sh 3 "$cent" \
-    > "logs/draw_cent${cent}.log" 2>&1 &
-  pidsd+=("$!")
-done
-for pid in "${pidsd[@]}"; do
-  wait "$pid"
-done
+# pidsd=()
+# for cent in 0; do
+#   ./run_everything_AA.sh 3 "$cent" \
+#     > "logs/draw_cent${cent}.log" 2>&1 &
+#   pidsd+=("$!")
+# done
+# for pid in "${pidsd[@]}"; do
+#   wait "$pid"
+# done
 # for cent in 0 1 2 3; do
   # root -l -q -b "drawFinalUnfold_AA.C(3,${cent}, \"${AUAU_CONFIG}\")"
   # root -l -q -b "drawFinalUnfold_AA_cent.C+(3,${cent}, \"${AUAU_CONFIG}\")"

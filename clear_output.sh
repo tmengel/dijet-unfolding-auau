@@ -3,10 +3,12 @@
 
 today=$(date +%Y-%m-%d)
 name="${1:-${today}}"
+storage_dir="$(pwd)/tmp"
+input_dir="$(pwd)"
 
-storage_dir="/home/tmengel/PPG14/dijet-unfolding-final/results/temp"
+# storage_dir="/home/tmengel/PPG14/dijet-unfolding-final/results/temp"
 mkdir -p "$storage_dir"
-input_dir="/home/tmengel/PPG14/dijet-unfolding-final/"
+# input_dir="/home/tmengel/PPG14/dijet-unfolding-final/"
 
 this_save="${storage_dir}/${name}_${today}"
 version_tag=1

@@ -836,7 +836,7 @@ namespace dlutility{
     string sPHENIX_MARK = "#bf{#it{sPHENIX}} #it{Internal}";
     if (prelim)
       {
-	sPHENIX_MARK = "#bf{#it{sPHENIX}} #it{Preliminary}";
+	sPHENIX_MARK = "#bf{#it{sPHENIX}} #it{Internal}";
       }
     //string extratext = "#it{Internal}";
 
@@ -864,7 +864,7 @@ namespace dlutility{
     string sPHENIX_MARK = "#bf{#it{sPHENIX}} #it{Internal}";
     if (prelim)
       {
-	sPHENIX_MARK = "#bf{#it{sPHENIX}} #it{Preliminary}";
+	sPHENIX_MARK = "#bf{#it{sPHENIX}} #it{Internal}";
       }
     //string extratext = "#it{Internal}";
 
@@ -900,7 +900,7 @@ namespace dlutility{
   void DrawSPHENIXprelim(double xpos, double ypos)
   {
     string sPHENIX_MARK = "#bf{#it{sPHENIX}}";
-    string extratext = "#it{Preliminary}";
+    string extratext = "#it{Internal}";
   
     double xpos_diff = 0.16;
     drawText(sPHENIX_MARK.c_str(), xpos,ypos);//, 0, kBlack, 22); 
@@ -943,7 +943,7 @@ namespace dlutility{
   void DrawSPHENIXppPrelim(double xpos, double ypos, int ral = 0, int isBeam = 1, int horiz  = 0, int issim = 0, std::string simmc = "Pythia 8")
   {
     string sPHENIX_MARK = "#bf{#it{sPHENIX}}";
-    string extratext = " #kern[-0.1]{#it{Preliminary}}";
+    string extratext = " #kern[-0.1]{#it{Internal}}";
     if (issim) extratext = " #kern[-0.3]{#it{Simulation}}";
     string txt = sPHENIX_MARK + extratext;
     double xpos_diff = 0.17;

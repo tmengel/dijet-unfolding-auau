@@ -10,6 +10,7 @@ using std::endl;
 #include "TH2D.h"
 #include "TNtuple.h"
 #include "TProfile.h"
+#include "TRandom.h"
 #include "TProfile2D.h"
 
 #include "dlUtility.h"
@@ -252,7 +253,11 @@ int unfoldDataUncertainties_noempty_AA(
     }
 
   int ntoys = 100;
-  
+
+  // Pin the toy-smearing seed (ROOT TRandom3 default) so the statistical
+  // uncertainty estimate is reproducible run to run.
+  gRandom->SetSeed(4357);
+
   TF1 *ferror_response  =  new TF1("fgaus_truth","gaus");
 
   ferror_response->SetParameters(1, 0, 1);
@@ -381,7 +386,7 @@ int unfoldDataUncertainties_noempty_AA(
 
   
   TFile *fout = new TFile(Form("%s/uncertainties/uncertainties_%s_r%02d_%s.root", rb.get_code_location().c_str(), system_string.c_str(),  cone_size, sysname.c_str()),"recreate");
-  TEnv *penv = new TEnv("binning_AA.config");
+  TEnv *penv = new TEnv(std::getenv("AUAU_CONFIG"));
   penv->Write();
   for (int iter = 0; iter < niterations; iter++)
     {

@@ -3,8 +3,8 @@
 today=$(date +%Y-%m-%d)
 name="${1:-output_${today}}"
 
-storage_dir="/home/tmengel/PPG14/dijet-unfolding-final/results"
-input_dir="/home/tmengel/PPG14/dijet-unfolding-final"
+storage_dir="$(pwd)/results"
+input_dir="$(pwd)"
 
 this_save="${storage_dir}/${name}_${today}"
 version_tag=1

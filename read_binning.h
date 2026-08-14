@@ -20,6 +20,7 @@ public:
       code_location = std::getenv("DIJET_UNFOLDING_PATH");
       sim_location = std::getenv("AUAU_SIM_PATH");
       auau_config = std::getenv("AUAU_CONFIG");
+
     }
   std::string get_tntuple_location() 
   {
@@ -36,6 +37,10 @@ public:
   std::string get_jesr_location() 
   {
     return jesr_location;      
+  }
+  std::string get_unfolding_hists_path() 
+  {
+    return get_code_location() + "/unfolding_hists"; 
   }
 
   std::vector<int> getRunnumbers()
@@ -248,9 +253,37 @@ public:
     return;
   }
 
+  std::string get_system_string( const int cent = -1 )
+  {
+    std::string system_string = (cent < 0 ? "pp" : "AA_cent_" + std::to_string(cent));
+    return system_string;
+  }
+
+  std::string get_auau_config() { return auau_config; }
   
+  float get_reco_pt_min_cut() { return reco_min_pt_cut; }
+  float get_eta_cut_bkg() { return etacut_bkg; }
+  float get_abs_eta_acceptance( const float r ) { return 1.1 - r; }
+
+  float get_flow_fit_low() { return flow_fit_low; }
+  float get_flow_fit_high() { return flow_fit_high; }
+  float get_zyam_region_low() { return zyam_region_low; }
+  float get_zyam_region_high() { return zyam_region_high; }
+
+  bool accept_jet_ue_sub( const float sub_pt , const int cent )
+  {
+    const double cutval =  40.0*TMath::Exp(-0.038*cent);
+    return sub_pt < cutval;
+  }
+
  private:
 
+  // Finalized PPG-08 p+p JER for R=0.3 (IAN Table 5): nominal 10.7% base
+  // smearing with 8.3%/13.1% (nominal -/+ 2.4 points) systematic variations,
+  // combined in quadrature with the centrality-dependent UE term
+  // (built by jer/remake_smear_functions.C from the preliminary file).
+  // jer_smear_functions_prelim_8pct_base.root holds the preliminary
+  // 8%/5%/11% functions for cross-checks only.
   std::string jerfile = "jer/jer_smear_functions.root";
   TFile *fjer{nullptr};
   TEnv *penv{nullptr};
@@ -261,8 +294,12 @@ public:
   std::string jesr_location = ".";
   std::string code_location = ".";
   std::string auau_config = ".";
+
+  float sub_ue_p0s[3] = { 0.0 , 40.0 , 0.038 };
   
-  float sample_boundary_goal[4] = {9.99, 19.99, 29.99, 100};
+  // float sample_boundary_goal[4] = {9.99, 19.99, 29.99, 100};
+
+  float sample_boundary_goal[4] = {13.99, 19.99, 29.99, 100};
 
   float sample_boundary[4] = {0, 0, 0, 100};
 
@@ -292,5 +329,13 @@ public:
   int measure_subleading_bin = 0;
 
   int centrality_bins = 4;  
+
+  float reco_min_pt_cut = 8.0;
+  float etacut_bkg = 0.8;
+
+  float flow_fit_low = 0.0;
+  float flow_fit_high = 2.5;
+  float zyam_region_low = 0.8;
+  float zyam_region_high = 2.5;
 };
 #endif

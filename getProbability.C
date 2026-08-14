@@ -1,274 +1,321 @@
+#include <algorithm>
+#include <cmath>
 #include <iostream>
+#include <string>
+#include <vector>
+
+#include "TCanvas.h"
+#include "TFile.h"
+#include "TF1.h"
+#include "TH1D.h"
+#include "TLegend.h"
+#include "TLine.h"
+#include "TMath.h"
+#include "TStyle.h"
+#include "TTree.h"
+
 #include "dlUtility.h"
 #include "read_binning.h"
-#include "histo_opps.h"
 
-using std::cout;
-using std::endl;
-
-struct jet
+namespace
 {
-  int id;
-  float pt = 0;
-  int ptbin = 0;
-  float eta = 0;
-  float phi = 0;
-  float emcal = 0;
-  int matched = 0;
-  float dR = 1;
-};
+  // Fill one probability histogram from raw jet counts.  This is equivalent to
+  // the calculation in getProbability_v0.C, but keeps the Poisson mean in
+  // count/event form so no intermediate unfolding histogram is needed.
+  void fillProbabilityHistogram(TH1D* probability, const TH1D* jetCounts,
+                                const double nEvents, const double area1,
+                                const double area2)
+  {
+    if (!probability || !jetCounts || nEvents <= 0.0)
+    {
+      return;
+    }
 
-const float etacut = 1.1;
-const float eta_cut_dijet = 0.8;
+    const int nBins = jetCounts->GetNbinsX();
+    for (int bin = 1; bin <= probability->GetNbinsX(); ++bin)
+    {
+      const double pt = probability->GetBinCenter(bin);
+      const int countBin = jetCounts->GetXaxis()->FindBin(pt);
+      const double nCurrent = jetCounts->GetBinContent(countBin);
+      // Include ROOT's overflow bin: it represents jets above the last pT bin.
+      const double nAbove = jetCounts->Integral(countBin + 1, nBins + 1);
 
-const float vertex_cut = 60;
+      const double lambda = (area1 * nCurrent + area2 * nAbove) / nEvents;
+      const double probabilityValue = std::exp(-lambda);
+      const double lambdaVariance =
+        (area1 * area1 * nCurrent + area2 * area2 * nAbove) /
+        (nEvents * nEvents);
 
-void getProbability(const int cone_size = 3,  const std::string configfile = "binning_AA.config")
+      probability->SetBinContent(bin, probabilityValue);
+      probability->SetBinError(bin,
+                               probabilityValue * std::sqrt(lambdaVariance));
+    }
+  }
+}
+
+void getProbability(
+  const int cone_size = 3,
+  const int centrality_bin = 0,
+  const std::string& configfile = "binning_AA.config",
+  const std::string& infile = "/home/tmengel/PPG14/rootfiles/v001_20260720/run2auau_rho_jet.root")
 {
-  std::cout << "Staring" << std::endl;
+  (void) centrality_bin;  // All configured centrality bins are produced.
+
   read_binning rb(configfile.c_str());
-  std::cout << "Read" << std::endl;
-  Int_t read_nbins = rb.get_nbins();
+  const std::string unfoldingHistsPath = rb.get_unfolding_hists_path();
+  const int nCentralityBins = rb.get_number_centrality_bins();
+  const int nPtBins = rb.get_nbins();
 
+  if (nCentralityBins <= 0 || nPtBins <= 0)
+  {
+    std::cerr << "Invalid centrality or pT binning in " << configfile << std::endl;
+    return;
+  }
 
-  Int_t primer = rb.get_primer();
+  std::vector<float> centralityEdges(nCentralityBins + 1);
+  std::vector<float> ptEdges(nPtBins + 1);
+  rb.get_centrality_bins(centralityEdges.data());
+  rb.get_pt_bins(ptEdges.data());
 
-  Double_t dphicut = rb.get_dphicut();
+  const double jetRadius = cone_size * 0.1;
+  const double jetArea = TMath::Pi() * jetRadius * jetRadius;
+  const double totalArea = 2.0 * TMath::Pi() * 1.6;
+  const double awaySideArea = 2.0 * (TMath::Pi() - rb.get_dphicut()) * 1.6;
+  const double area1 = (totalArea - awaySideArea - jetArea) / totalArea;
+  const double area2 = (totalArea - jetArea) / totalArea;
 
-  float jet_area =TMath::Pi()*TMath::Power(cone_size*0.1, 2);
-  float dphi_area =2*(TMath::Pi() - dphicut)*1.6;
-  float total_area = (TMath::Pi()*2*1.6);;
-  float scale_factor = (total_area - dphi_area - jet_area) / total_area;
-  float scale_factor_above = (total_area - jet_area) / total_area;
+  if (area1 < 0.0 || area1 > 1.0 || area2 < 0.0 || area2 > 1.0)
+  {
+    std::cerr << "Invalid geometric acceptance factors: A1=" << area1
+              << ", A2=" << area2 << std::endl;
+    return;
+  }
 
-  
-  const int nbins = read_nbins;
-  
-  float ipt_bins[nbins+1];
-  float ixj_bins[nbins+1];
+  const float vertexCut = static_cast<float>(rb.get_vtx_cut());
+  const float etaCut = rb.get_abs_eta_acceptance(jetRadius);
+  const float recoPtCut = static_cast<float>(rb.get_reco_pt_min_cut());
 
-  rb.get_pt_bins(ipt_bins);
-  rb.get_xj_bins(ixj_bins);
+  auto* input = TFile::Open(infile.c_str(), "READ");
+  if (!input || input->IsZombie())
+  {
+    std::cerr << "Could not open " << infile << std::endl;
+    return;
+  }
 
-  for (int i = 0 ; i < nbins + 1; i++)
+  auto* tree = dynamic_cast<TTree*>(input->Get("T"));
+  if (!tree)
+  {
+    std::cerr << "Could not find tree T in " << infile << std::endl;
+    input->Close();
+    return;
+  }
+
+  tree->SetBranchStatus("*", 0);
+  for (const char* branch : {"cent", "zvrtx", "jet_pT", "jet_unsub_pT",
+                             "jet_E", "jet_unsub_E", "jet_eta"})
+  {
+    tree->SetBranchStatus(branch, 1);
+  }
+
+  int centrality = -1;
+  float vertexZ = 0.0;
+  std::vector<float>* jetPt = nullptr;
+  std::vector<float>* jetUnsubPt = nullptr;
+  std::vector<float>* jetEnergy = nullptr;
+  std::vector<float>* jetUnsubEnergy = nullptr;
+  std::vector<float>* jetEta = nullptr;
+  tree->SetBranchAddress("cent", &centrality);
+  tree->SetBranchAddress("zvrtx", &vertexZ);
+  tree->SetBranchAddress("jet_pT", &jetPt);
+  tree->SetBranchAddress("jet_unsub_pT", &jetUnsubPt);
+  tree->SetBranchAddress("jet_E", &jetEnergy);
+  tree->SetBranchAddress("jet_unsub_E", &jetUnsubEnergy);
+  tree->SetBranchAddress("jet_eta", &jetEta);
+
+  constexpr int kFineCentralityBins = 100;
+  std::vector<double> eventsByCentrality(kFineCentralityBins, 0.0);
+  std::vector<TH1D*> jetCountsByCentrality(kFineCentralityBins, nullptr);
+  for (int cent = 0; cent < kFineCentralityBins; ++cent)
+  {
+    jetCountsByCentrality[cent] = new TH1D(
+      Form("h_jet_spectra_etacut_%d", cent),
+      ";#it{p}_{T} [GeV];Jets", 45, 5.0, 50.0);
+    jetCountsByCentrality[cent]->Sumw2();
+  }
+
+  const Long64_t entries = tree->GetEntries();
+  const Long64_t progressStep = std::max<Long64_t>(1, entries / 10);
+  TF1 backgroundCut("fcut", "[0]+[1]*TMath::Exp(-[2]*x)", 0.0, 100.0);
+  backgroundCut.SetParameters(2.5, 36.2, 0.035);
+
+  for (Long64_t entry = 0; entry < entries; ++entry)
+  {
+    tree->GetEntry(entry);
+    if (entry > 0 && entry % progressStep == 0)
     {
-      std::cout << ipt_bins[i] << " -- " << ixj_bins[i] << std::endl;
+      std::cout << "Event " << entry << " / " << entries << std::endl;
     }
 
-  
-  float truth_leading_cut = rb.get_truth_leading_cut();
-  float truth_subleading_cut = rb.get_truth_subleading_cut();
-
-  float reco_leading_cut = rb.get_reco_leading_cut();
-  float reco_subleading_cut = rb.get_reco_subleading_cut();
-
-  float measure_leading_cut = rb.get_measure_leading_cut();
-  float measure_subleading_cut = rb.get_measure_subleading_cut();
-    
-  int truth_leading_bin = rb.get_truth_leading_bin();
-  int truth_subleading_bin = rb.get_truth_subleading_bin();
-
-  int reco_leading_bin = rb.get_reco_leading_bin();
-  int reco_subleading_bin = rb.get_reco_subleading_bin();
-
-  int measure_leading_bin = rb.get_measure_leading_bin();
-  int measure_subleading_bin = rb.get_measure_subleading_bin();
-
-
-  std::cout << "Truth1: " << truth_leading_cut << std::endl;
-  std::cout << "Reco 1: " <<  reco_leading_cut << std::endl;
-  std::cout << "Meas 1: " <<  measure_leading_cut << std::endl;
-  std::cout << "Truth2: " <<  truth_subleading_cut << std::endl;
-  std::cout << "Reco 2: " <<  reco_subleading_cut << std::endl;
-  std::cout << "Meas 2: " <<  measure_subleading_cut << std::endl;
-
-  // get centrality
-  const int centrality_bins = rb.get_number_centrality_bins();
-
-  float icentrality_bins[centrality_bins + 1];
-  rb.get_centrality_bins(icentrality_bins);
-
-
-  TFile *fun[centrality_bins];
-  TH1D *h_centrality_data[centrality_bins];
-  for (int i = 0;  i < centrality_bins; i++)
-    {      
-      fun[i] = new TFile(Form("/home/tmengel/PPG14/dijet-unfolding/v001_20260715/unfolding_hists/unfolding_hists_preload_AA_cent_%d_r%02d_nominal.root", rb.get_code_location().c_str(), i , cone_size), "r");
-      if (!fun[i]) return;
-      h_centrality_data[i] = (TH1D*) fun[i]->Get("h_centrality");
-      if (!h_centrality_data[i]) return;
-      h_centrality_data[i]->SetName(Form("h_centrality_data_%d", i));
-    }
-  
-  std::string infile = "/home/tmengel/PPG14/rootfiles/v001_20260720/run2auau_rho_jet-all.root";
-
-  TFile *f = new TFile(infile.c_str(), "r");
-
-  TH1D *h_pt2_correction[100];
-  TH1D *h_pt2_bin_correction[centrality_bins];
-  TH1D *h_pt2_bin_log_correction[centrality_bins];
-
-  TH1D *h_centrality = (TH1D*) f->Get("h_centrality");
-
-  TH1D *h_jet_spectra[100];
-
-  TH1D *h_jet_spectra_meas[centrality_bins];
-  TH1D *h_scaled_events = new TH1D("h_scaled_events","", 4, -0.5, 3.5);
- 
-  int no_hist[4] = {0};
-  for ( int i = 0; i < 100; i++)
+    if (std::abs(vertexZ) > vertexCut || centrality < 0 ||
+        centrality >= kFineCentralityBins)
     {
-
-      h_pt2_correction[i] = new TH1D(Form("h_pt2_correction_%d", i),";#it{p}_{T};Subleading Efficiency", 45, 5, 50);
-
-      h_jet_spectra[i] = (TH1D*) f->Get(Form("h_jet_spectra_etacut_%d", i));
-      if (h_jet_spectra[i]->Integral() == 0) continue;
-      for (int j = 0; j < 4; j++)
-	{
-	  std::cout << j << std::endl;      
-	  if (icentrality_bins[j] <= i && icentrality_bins[j+1] > i)
-	    {
-	      int cbin = 0;
-	      if (!no_hist[j])
-		{
-		  no_hist[j] = 1;
-		  std::cout << "Making the histos " << j << std::endl;      
-		  h_jet_spectra_meas[j] = (TH1D*) h_jet_spectra[i]->Clone();
-		  h_jet_spectra_meas[j]->SetName(Form("h_jet_spectra_meas_%d", j));
-		  h_jet_spectra_meas[j]->Reset();
-		  cbin = h_centrality_data[j]->FindBin(i);
-		  
-		  float n_events_MB = h_centrality->GetBinContent(i+1);
-		  float n_events_jet = h_centrality_data[j]->GetBinContent(cbin);
-		  h_centrality_data[j]->Scale(n_events_MB/n_events_jet);
-		  std::cout << n_events_MB << " / " << n_events_jet << std::endl;
-		}
-
-	      cbin = h_centrality_data[j]->FindBin(i);
-	      float scale = h_centrality_data[j]->GetBinContent(cbin)/h_centrality->GetBinContent(i+1);
-	      h_jet_spectra_meas[j]->Add(h_jet_spectra[i], scale);
-	      h_scaled_events->Fill(j, h_centrality->GetBinContent(i+1)*scale);
-	    }
-	};
+      continue;
     }
 
-  for (int i = 0; i < centrality_bins; i++)
+    // The denominator is the accepted minimum-bias event count, as in the
+    // v0 reweighting procedure and the direct example in genProbs.C.
+    eventsByCentrality[centrality] += 1.0;
+
+    if (!jetPt || !jetUnsubPt || !jetEnergy || !jetUnsubEnergy || !jetEta ||
+        jetPt->size() != jetUnsubPt->size() ||
+        jetPt->size() != jetEnergy->size() ||
+        jetPt->size() != jetUnsubEnergy->size() ||
+        jetPt->size() != jetEta->size())
     {
-      h_jet_spectra_meas[i]->Scale(1./h_scaled_events->GetBinContent(i+1),"width");
-      h_pt2_bin_correction[i] = new TH1D(Form("h_pt2_bin_correction_%d", i),";#it{p}_{T} [GeV];Subleading Efficiency", 45, 5, 50);
-      h_pt2_bin_log_correction[i] = new TH1D(Form("h_pt2_bin_log_correction_%d", i),";#it{p}_{T} [GeV] ;Subleading Efficiency", nbins, ipt_bins);
-      for (int j = 0 ; j < h_pt2_bin_correction[i]->GetNbinsX(); j++)
-	{
-	  double bin_low_edge = h_pt2_bin_correction[i]->GetBinLowEdge(j+1);
-	  double bin_high_edge = h_pt2_bin_correction[i]->GetBinWidth(j+1) + bin_low_edge;
-	  double bin_center = h_pt2_bin_correction[i]->GetBinCenter(j+1);
-	  int bin_number1 = h_jet_spectra_meas[i]->FindBin(bin_center);
-	  int bin_number2 = h_jet_spectra_meas[i]->FindBin(bin_high_edge);
-	  double bin1_integral = h_jet_spectra_meas[i]->Integral(bin_number1, bin_number2, "width")*scale_factor;
-	  double bin2_integral = h_jet_spectra_meas[i]->Integral(bin_number2, -1, "width")*scale_factor_above;
-	  double prob = TMath::Exp(-1*(bin1_integral + bin2_integral));
-	  h_pt2_bin_correction[i]->SetBinContent(j+1, prob);
-	}
-      for (int j = 0 ; j < h_pt2_bin_log_correction[i]->GetNbinsX(); j++)
-	{
-	  double bin_low_edge = h_pt2_bin_log_correction[i]->GetBinLowEdge(j+1);
-	  double bin_high_edge = h_pt2_bin_log_correction[i]->GetBinWidth(j+1) + bin_low_edge;
-	  double bin_center = h_pt2_bin_log_correction[i]->GetBinCenter(j+1);
-	  int bin_number1 = h_jet_spectra_meas[i]->FindBin(bin_center);
-	  int bin_number2 = h_jet_spectra_meas[i]->FindBin(bin_high_edge);
-	  double bin1_integral = h_jet_spectra_meas[i]->Integral(bin_number1, bin_number2, "width")*scale_factor;
-	  double bin2_integral = h_jet_spectra_meas[i]->Integral(bin_number2, -1, "width")*scale_factor_above;
-	  double prob = TMath::Exp(-1*(bin1_integral + bin2_integral));
-	  h_pt2_bin_log_correction[i]->SetBinContent(j+1, prob);
-	}
+      continue;
     }
+
+    const float cutValue = backgroundCut.Eval(centrality);
+    for (std::size_t jet = 0; jet < jetPt->size(); ++jet)
+    {
+      const float pt = jetPt->at(jet);
+      if (!std::isfinite(pt) || !std::isfinite(jetEta->at(jet)) ||
+          pt < recoPtCut || jetEnergy->at(jet) < 0.0 ||
+          jetUnsubEnergy->at(jet) < 0.0 || std::abs(jetEta->at(jet)) > etaCut ||
+          jetUnsubPt->at(jet) - pt > cutValue)
+      {
+        continue;
+      }
+      // Do not upper-cut pT: jets over 50 GeV are retained in the overflow bin.
+      jetCountsByCentrality[centrality]->Fill(pt);
+    }
+  }
+
+  std::vector<TH1D*> probabilityFine(kFineCentralityBins, nullptr);
+  for (int cent = 0; cent < kFineCentralityBins; ++cent)
+  {
+    probabilityFine[cent] = new TH1D(
+      Form("h_pt2_correction_%d", cent),
+      ";#it{p}_{T} [GeV];Subleading Efficiency", 45, 5.0, 50.0);
+    fillProbabilityHistogram(probabilityFine[cent], jetCountsByCentrality[cent],
+                             eventsByCentrality[cent], area1, area2);
+  }
+
+  std::vector<TH1D*> jetCounts(nCentralityBins, nullptr);
+  std::vector<TH1D*> jetSpectra(nCentralityBins, nullptr);
+  std::vector<TH1D*> probability(nCentralityBins, nullptr);
+  std::vector<TH1D*> probabilityLog(nCentralityBins, nullptr);
+  std::vector<double> events(nCentralityBins, 0.0);
+
+  for (int cent = 0; cent < nCentralityBins; ++cent)
+  {
+    jetCounts[cent] = new TH1D(Form("h_jet_counts_%d", cent),
+      ";#it{p}_{T} [GeV];Jets", 45, 5.0, 50.0);
+    jetCounts[cent]->Sumw2();
+    probability[cent] = new TH1D(Form("h_pt2_bin_correction_%d", cent),
+      ";#it{p}_{T} [GeV];Subleading Efficiency", 45, 5.0, 50.0);
+    probabilityLog[cent] = new TH1D(Form("h_pt2_bin_log_correction_%d", cent),
+      ";#it{p}_{T} [GeV];Subleading Efficiency", nPtBins, ptEdges.data());
+
+    for (int fineCent = 0; fineCent < kFineCentralityBins; ++fineCent)
+    {
+      if (fineCent >= centralityEdges[cent] && fineCent < centralityEdges[cent + 1])
+      {
+        events[cent] += eventsByCentrality[fineCent];
+        jetCounts[cent]->Add(jetCountsByCentrality[fineCent]);
+      }
+    }
+
+    fillProbabilityHistogram(probability[cent], jetCounts[cent], events[cent], area1, area2);
+    fillProbabilityHistogram(probabilityLog[cent], jetCounts[cent], events[cent], area1, area2);
+    jetSpectra[cent] = dynamic_cast<TH1D*>(jetCounts[cent]->Clone(
+      Form("h_jet_spectra_meas_%d", cent)));
+    if (events[cent] > 0.0)
+    {
+      jetSpectra[cent]->Scale(1.0 / events[cent], "width");
+    }
+  }
 
   gStyle->SetOptStat(0);
   dlutility::SetyjPadStyle();
+  // Show both probability binnings.  The third panel is intentionally drawn
+  // from h_pt2_bin_log_correction rather than a rebinned display histogram,
+  // so it is a direct check of the correction consumed by the unfolding.
+  auto* canvas = new TCanvas("c", "c", 1500, 450);
+  canvas->Divide(3, 1);
+  const int colors[] = {kRed, kBlue, kGreen + 2, kOrange + 7};
+  const int nDraw = std::min(4, nCentralityBins);
+  auto* legend = new TLegend(0.62, 0.62, 0.88, 0.88);
+  legend->SetLineWidth(0);
+  legend->SetTextSize(0.04);
 
-  TCanvas *c = new TCanvas("c","c", 1000, 450);
-  c->Divide(2, 1);
-
-  c->cd(1);
+  canvas->cd(1);
   gPad->SetLogy();
-  
-  dlutility::SetLineAtt(h_jet_spectra_meas[0], kRed, 2, 1);
-  dlutility::SetLineAtt(h_jet_spectra_meas[1], kBlue, 2, 1);
-  dlutility::SetLineAtt(h_jet_spectra_meas[2], kGreen, 2, 1);
-  dlutility::SetLineAtt(h_jet_spectra_meas[3], kOrange, 2, 1);
-  dlutility::SetFont(h_jet_spectra_meas[0], 42, 0.05);
-  gPad->SetLeftMargin(0.22);
-  //  h_pt2_bin_correction[0]->SetMaximum(1.3);
-  h_jet_spectra_meas[0]->GetXaxis()->SetRangeUser(5, 30);
-  h_jet_spectra_meas[0]->SetTitle("; #it{p}_{T} [GeV] ; #frac{1}{N_{evt}}#frac{dN_{jet}}{d#it{p}_{T}}");
-  h_jet_spectra_meas[0]->GetYaxis()->SetTitleOffset(1.6);
+  for (int cent = 0; cent < nDraw; ++cent)
+  {
+    dlutility::SetLineAtt(jetSpectra[cent], colors[cent], 2, 1);
+    jetSpectra[cent]->SetTitle(";#it{p}_{T} [GeV];#frac{1}{N_{evt}}#frac{dN_{jet}}{d#it{p}_{T}}");
+    jetSpectra[cent]->GetXaxis()->SetRangeUser(5, 30);
+    jetSpectra[cent]->Draw(cent == 0 ? "hist" : "hist same");
+    legend->AddEntry(jetSpectra[cent], Form("%.0f-%.0f%%", centralityEdges[cent], centralityEdges[cent + 1]), "l");
+  }
+  legend->Draw();
 
-  h_jet_spectra_meas[0]->Draw("hist");
-  h_jet_spectra_meas[1]->Draw("hist same");
-  h_jet_spectra_meas[2]->Draw("hist same");
-  h_jet_spectra_meas[3]->Draw("hist same");
+  canvas->cd(2);
+  for (int cent = 0; cent < nDraw; ++cent)
+  {
+    dlutility::SetLineAtt(probability[cent], colors[cent], 2, 1);
+    probability[cent]->SetMinimum(0.0);
+    probability[cent]->SetMaximum(1.05);
+    probability[cent]->GetXaxis()->SetRangeUser(5, 30);
+    probability[cent]->Draw(cent == 0 ? "hist" : "hist same");
+  }
+  auto* unity = new TLine(5, 1, 30, 1);
+  unity->SetLineStyle(4);
+  unity->Draw();
+  legend->Draw();
 
-  dlutility::DrawSPHENIX(0.5, 0.85);
+  canvas->cd(3);
+  auto* logLegend = new TLegend(0.62, 0.62, 0.88, 0.88);
+  logLegend->SetLineWidth(0);
+  logLegend->SetTextSize(0.04);
+  for (int cent = 0; cent < nDraw; ++cent)
+  {
+    dlutility::SetLineAtt(probabilityLog[cent], colors[cent], 2, 1);
+    probabilityLog[cent]->SetMinimum(0.0);
+    probabilityLog[cent]->SetMaximum(1.05);
+    probabilityLog[cent]->SetTitle(";#it{p}_{T} [GeV];Subleading Efficiency");
+    probabilityLog[cent]->GetXaxis()->SetRangeUser(5, 30);
+    probabilityLog[cent]->Draw(cent == 0 ? "hist" : "hist same");
+    logLegend->AddEntry(probabilityLog[cent],
+      Form("%.0f-%.0f%%", centralityEdges[cent], centralityEdges[cent + 1]), "l");
+  }
+  auto* logUnity = new TLine(5, 1, 30, 1);
+  logUnity->SetLineStyle(4);
+  logUnity->Draw();
+  logLegend->Draw();
+  canvas->Print(Form("probabilities_AA_r%02d.pdf", cone_size));
 
-  TLegend *leg = new TLegend(0.65, 0.6, 0.85, 0.75);
-  leg->SetLineWidth(0);
-  leg->SetTextSize(0.04);
-  leg->AddEntry(h_jet_spectra_meas[0], "0-10%","l");
-  leg->AddEntry(h_jet_spectra_meas[1], "10-30%","l");
-  leg->AddEntry(h_jet_spectra_meas[2], "30-50%","l");
-  leg->AddEntry(h_jet_spectra_meas[3], "50-90%","l");
-  leg->Draw("same");
-  
-  c->cd(2);
-  gPad->SetLeftMargin(0.22);
-  dlutility::SetLineAtt(h_pt2_bin_correction[0], kRed, 2, 1);
-  dlutility::SetLineAtt(h_pt2_bin_correction[1], kBlue, 2, 1);
-  dlutility::SetLineAtt(h_pt2_bin_correction[2], kGreen, 2, 1);
-  dlutility::SetLineAtt(h_pt2_bin_correction[3], kOrange, 2, 1);
-  dlutility::SetFont(h_pt2_bin_correction[0], 42, 0.05);
+  const std::string output = unfoldingHistsPath +
+    "/probability_hists_AA_r0" + std::to_string(cone_size) + ".root";
+  auto* outputFile = TFile::Open(output.c_str(), "RECREATE");
+  if (!outputFile || outputFile->IsZombie())
+  {
+    std::cerr << "Could not create " << output << std::endl;
+    input->Close();
+    return;
+  }
 
-  h_pt2_bin_correction[0]->SetMaximum(1.5);
-  h_pt2_bin_correction[0]->GetXaxis()->SetRangeUser(5, 30);
-
-  h_pt2_bin_correction[0]->Draw("hist");
-  h_pt2_bin_correction[1]->Draw("hist same");
-  h_pt2_bin_correction[2]->Draw("hist same");
-  h_pt2_bin_correction[3]->Draw("hist same");
-
-  TLine *l1 = new TLine(5, 1, 30, 1);
-  l1->SetLineWidth(2);
-  l1->SetLineStyle(4);
-  l1->SetLineColor(kBlack);
-  l1->Draw("same");
-  dlutility::DrawSPHENIX(0.27, 0.85);
-
-  leg = new TLegend(0.65, 0.73, 0.85, 0.9);
-  leg->SetLineWidth(0);
-  leg->SetTextSize(0.04);
-  leg->AddEntry(h_pt2_bin_correction[0], "0-10%","l");
-  leg->AddEntry(h_pt2_bin_correction[1], "10-30%","l");
-  leg->AddEntry(h_pt2_bin_correction[2], "30-50%","l");
-  leg->AddEntry(h_pt2_bin_correction[3], "50-90%","l");
-  leg->Draw("same");
-  
-  c->Print(Form("probabilities_AA_r%02d.pdf", cone_size));
-  // c->Print(Form("%s/unfolding_plots/probabilities_AA_r%02d.pdf", rb.get_code_location().c_str(), cone_size));
-	   
-  // TString unfoldpath = rb.get_code_location() + "/unfolding_hists/probability_hists_AA_r0" + std::to_string(cone_size);
-  TString unfoldpath = "probability_hists_AA_r0" + std::to_string(cone_size);
-  unfoldpath += ".root";
-  
-  TFile *fout = new TFile(unfoldpath.Data(),"recreate");
-
-  for (int i = 0 ; i < 100; i++)
-    {
-      h_pt2_correction[i]->Write();
-    }
-  for (int i = 0 ; i < centrality_bins; i++)
-    {
-      h_pt2_bin_correction[i]->Write();
-      h_pt2_bin_log_correction[i]->Write();
-    }
-  fout->Close();
-
+  for (int cent = 0; cent < kFineCentralityBins; ++cent)
+  {
+    probabilityFine[cent]->Write();
+  }
+  for (int cent = 0; cent < nCentralityBins; ++cent)
+  {
+    probability[cent]->Write();
+    probabilityLog[cent]->Write();
+    jetSpectra[cent]->Write();
+  }
+  outputFile->Close();
+  input->Close();
 }

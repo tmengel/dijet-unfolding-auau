@@ -155,7 +155,7 @@ void compare_final_xj(const char *file_v1,
 
 
 
-  const int color1 = kOrange + 7;
+  const int color1 = kGray + 2;
   int color2 = arr_color_unfold[centrality_bin];
 
   TFile *f1 = TFile::Open(file_v1, "READ");
@@ -293,8 +293,8 @@ void compare_final_xj(const char *file_v1,
   g2 -> SetFillColorAlpha(color2, 0.1);
   if (g1) g1->Draw("E2 SAME");
   if (g2) g2->Draw("E2 SAME");
-  h1->Draw("E SAME");
-  h2->Draw("E SAME");
+  h1->Draw("E P SAME");
+  h2->Draw("E P SAME");
 
   std::vector< std::string > my_tags;
   my_tags.push_back("#it{#bf{sPHENIX} Internal}");
