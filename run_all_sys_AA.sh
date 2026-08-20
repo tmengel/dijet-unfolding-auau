@@ -26,16 +26,16 @@ case "$(basename "$sysconfig")" in
 esac
 
 
-root -l -q -b "createResponse_noempty_AA.cxx(\"${sysconfig}\", 0, 10, ${conesize}, ${cent}, 1, ${OPTION_A_SETTINGS})"
+root -l -q -b "createResponse_noempty_AA.cxx(\"${sysconfig}\", 0, 10, ${conesize}, ${cent}, 1)"
 
 root -l -q -b "unfoldData_noempty_AA.cxx(\"${sysconfig}\", 10, ${conesize}, ${cent}, 1)"
 
 root -l -q -b "getCentralityReweighting.C(${conesize}, ${cent}, \"${sysconfig}\")"
 
-# root -l -q -b "createResponse_noempty_AA.cxx(\"${sysconfig}\", 0, 10, ${conesize}, ${cent}, 2, ${OPTION_A_SETTINGS})"
+# root -l -q -b "createResponse_noempty_AA.cxx(\"${sysconfig}\", 0, 10, ${conesize}, ${cent}, 2 )"
 
 # root -l -q -b "unfoldData_noempty_AA.cxx(\"${sysconfig}\", 10, ${conesize}, ${cent}, 2)"
 
-root -l -q -b "createResponse_noempty_AA.cxx(\"${sysconfig}\", 0, 10, ${conesize}, ${cent}, 0, ${OPTION_A_SETTINGS})"
+root -l -q -b "createResponse_noempty_AA.cxx(\"${sysconfig}\", 0, 10, ${conesize}, ${cent}, 0 )"
 
 root -l -q -b "unfoldData_noempty_AA.cxx(\"${sysconfig}\", 10, ${conesize}, ${cent})"

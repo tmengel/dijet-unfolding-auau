@@ -41,23 +41,23 @@ for pid in "${pids[@]}"; do
   wait "$pid"
 done
 
-# force_sim_cache=false
-# dphilogfile="logs/draw_dphi.log"
-# [[ "${FORCE_SIM_CACHE:-0}" == "1" ]] && force_sim_cache=true
-# root -l -b -q "makeCOMBSimulationCache_AA.C+(${conesize},-1,\"${AUAU_CONFIG}\",${force_sim_cache})" > "$dphilogfile" 2>&1
-# wait
+force_sim_cache=false
+dphilogfile="logs/draw_dphi.log"
+[[ "${FORCE_SIM_CACHE:-0}" == "1" ]] && force_sim_cache=true
+root -l -b -q "makeCOMBSimulationCache_AA.C(${conesize},-1,\"${AUAU_CONFIG}\",${force_sim_cache})" > "$dphilogfile" 2>&1
+wait
 
-# pidsd=()
-# for cent in 0; do
-#   ./run_everything_AA.sh 3 "$cent" \
-#     > "logs/draw_cent${cent}.log" 2>&1 &
-#   pidsd+=("$!")
-# done
-# for pid in "${pidsd[@]}"; do
-#   wait "$pid"
-# done
-# for cent in 0 1 2 3; do
-  # root -l -q -b "drawFinalUnfold_AA.C(3,${cent}, \"${AUAU_CONFIG}\")"
-  # root -l -q -b "drawFinalUnfold_AA_cent.C+(3,${cent}, \"${AUAU_CONFIG}\")"
-  # root -l -q -b "drawFinalUnfold_AA_only.C+(3,${cent}, \"${AUAU_CONFIG}\", 2)"
-# done 
+pidsd=()
+for cent in 0; do
+  ./run_everything_AA.sh 3 "$cent" \
+    > "logs/draw_cent${cent}.log" 2>&1 &
+  pidsd+=("$!")
+done
+for pid in "${pidsd[@]}"; do
+  wait "$pid"
+done
+for cent in 0 1 2 3; do
+  root -l -q -b "drawFinalUnfold_AA.C(3,${cent}, \"${AUAU_CONFIG}\")"
+  root -l -q -b "drawFinalUnfold_AA_cent.C(3,${cent}, \"${AUAU_CONFIG}\")"
+  root -l -q -b "drawFinalUnfold_AA_only.C(3,${cent}, \"${AUAU_CONFIG}\", 2)"
+done 

@@ -1,5 +1,7 @@
-#ifndef READ_BINNING_H
-#define READ_BINNING_H
+#ifndef _ANACONF_H_
+#define _ANACONF_H_
+
+
 #include "TEnv.h"
 #include "TF1.h"
 #include "TFile.h"
@@ -8,20 +10,19 @@
 #include <vector>
 #include <sstream>
 
-class read_binning
-{
-public:
-  read_binning(const std::string configfile)
-    {
-      fjer = new TFile(jerfile.c_str(), "r");
-      
-      penv = new TEnv(configfile.c_str());
-      tntuple_location = std::getenv("DIJET_TNTUPLE_PATH");
-      code_location = std::getenv("DIJET_UNFOLDING_PATH");
-      sim_location = std::getenv("AUAU_SIM_PATH");
-      auau_config = std::getenv("AUAU_CONFIG");
+class AnaConf {
 
-    }
+ public:
+  AnaConf( const std::string & conf = "" ) {
+    fjer = new TFile(jerfile.c_str(), "r");
+    penv = new TEnv(configfile.c_str());
+    tntuple_location = std::getenv("DIJET_TNTUPLE_PATH");
+    code_location = std::getenv("DIJET_UNFOLDING_PATH");
+    sim_location = std::getenv("AUAU_SIM_PATH");
+    auau_config = std::getenv("AUAU_CONFIG");
+  }
+
+
   std::string get_tntuple_location() 
   {
     return tntuple_location;      
@@ -175,7 +176,7 @@ public:
     }
     else if (jer_sys > 0)
     {
-	    sys_name = "f_positive";
+      sys_name = "f_positive";
     }
     f_smear_function = (TF1*) fjer->Get(Form("%s_%d", sys_name.c_str(), centrality_bin));
 
@@ -269,7 +270,6 @@ public:
 
     return;
   }
-
   void get_xj_bins(float ixj_bins[])
   {
     Int_t nbins = get_nbins();
@@ -289,7 +289,6 @@ public:
     }
     return;
   }
-
   std::string get_system_string( const int cent = -1 )
   {
     std::string system_string = (cent < 0 ? "pp" : "AA_cent_" + std::to_string(cent));
@@ -334,9 +333,9 @@ public:
 
   float sub_ue_p0s[3] = { 0.0 , 40.0 , 0.038 };
   
-  // float sample_boundary_goal[4] = {9.99, 19.99, 29.99, 100};
+  float sample_boundary_goal[4] = {9.99, 19.99, 29.99, 100};
 
-  float sample_boundary_goal[4] = {13.99, 19.99, 29.99, 100};
+  // float sample_boundary_goal[4] = {13.99, 19.99, 29.99, 100};
 
   float sample_boundary[4] = {0, 0, 0, 100};
 

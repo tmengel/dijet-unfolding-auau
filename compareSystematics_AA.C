@@ -1,6 +1,12 @@
 // Compare the AA systematic-variation plot between the current and reference
-// versions.  The reference file contains only total systematics, so its two
-// total-uncertainty curves are drawn as dotted black lines.
+// versions.  The reference systematics file only stores the total
+// uncertainty (drawn as dotted black lines); the individual components
+// (JES, JER, UE background subtraction -- called ZYAM in the old analysis --
+// inclusive, and unfolding/prior) are not saved anywhere by the old
+// analysis, so they are reconstructed here from the old analysis's raw
+// per-variation unfolded spectra (unfolding_hists_*_<variation>.root) using
+// the same x_J-projection recipe as drawSys_AA.C, driven by the old binning
+// configuration embedded as a TEnv in referenceConfigFile.
 //
 // Example: root -l -q 'compareSystematics_AA.C(1,4)'
 
@@ -20,9 +26,10 @@
 #include "TPad.h"
 #include "TString.h"
 #include "TStyle.h"
+#include "TSystem.h"
 
 #include "histo_opps.h"
-
+#include "PlotUtils.h"
 namespace {
 TH1D *getHist(TFile &file, const TString &name)
 {
@@ -85,34 +92,41 @@ TH1D *graphAsHistogram(const TGraph *graph, const TH1D *templateHist, const TStr
   return hist;
 }
 
+// oldUpper/oldLower may be null: the reference file only stores the total
+// systematic, so individual components have nothing to compare against.
+// xMin excludes the low-x_J edge bin (see displayFloor in the driver), whose
+// content is a placeholder from outside the analysis's measured range.
 void saveIndividualSystematic(TH1D *currentUpper, TH1D *currentLower,
                               TH1D *oldUpper, TH1D *oldLower,
                               const char *label, const char *fileLabel,
-                              int color, int range, int iter)
+                              int color, int range, int iter, double xMin,
+                              const char *outputDir, int centrality_bin)
 {
   TCanvas *canvas = new TCanvas(Form("c_%s", fileLabel), label, 700, 600);
   canvas->SetLeftMargin(0.15); canvas->SetRightMargin(0.04);
   canvas->SetBottomMargin(0.14); canvas->SetTopMargin(0.05); canvas->SetTicks(1, 1);
   currentUpper->SetTitle(Form("%s; x_{J}; Variation / Nominal", label));
   currentUpper->SetMinimum(0.); currentUpper->SetMaximum(2.);
-  currentUpper->GetXaxis()->SetRangeUser(0.3, 1.0);
+  currentUpper->GetXaxis()->SetRangeUser(xMin, 1.0);
   currentUpper->GetXaxis()->SetTitleSize(0.055); currentUpper->GetYaxis()->SetTitleSize(0.055);
   currentUpper->GetXaxis()->SetLabelSize(0.045); currentUpper->GetYaxis()->SetLabelSize(0.045);
   currentUpper->SetLineColor(color); currentUpper->SetMarkerColor(color); currentUpper->SetMarkerStyle(20);
   currentLower->SetLineColor(color); currentLower->SetMarkerColor(color); currentLower->SetMarkerStyle(24);
-  oldUpper->SetLineColor(color); oldUpper->SetLineStyle(3); oldUpper->SetLineWidth(2);
-  oldLower->SetLineColor(color); oldLower->SetLineStyle(3); oldLower->SetLineWidth(2);
   currentUpper->Draw("HIST"); currentLower->Draw("HIST SAME");
-  oldUpper->Draw("HIST SAME"); oldLower->Draw("HIST SAME");
-  TLine unity(0.3, 1., 1., 1.); unity.SetLineStyle(2); unity.SetLineColor(kGray + 2); unity.Draw();
+  if (oldUpper && oldLower) {
+    oldUpper->SetLineColor(color); oldUpper->SetLineStyle(3); oldUpper->SetLineWidth(2);
+    oldLower->SetLineColor(color); oldLower->SetLineStyle(3); oldLower->SetLineWidth(2);
+    oldUpper->Draw("HIST SAME"); oldLower->Draw("HIST SAME");
+  }
+  TLine unity(xMin, 1., 1., 1.); unity.SetLineStyle(2); unity.SetLineColor(kGray + 2); unity.Draw();
   TLegend *legend = new TLegend(0.47, 0.67, 0.94, 0.89);
   legend->SetBorderSize(0); legend->SetFillStyle(0); legend->SetTextSize(0.035);
-  legend->AddEntry(currentUpper, "New (solid)", "l");
-  legend->AddEntry(oldUpper, "Old (dotted)", "l");
+  legend->AddEntry(currentUpper, oldUpper ? "New (solid)" : "Current", "l");
+  if (oldUpper) legend->AddEntry(oldUpper, "Old (dotted)", "l");
   legend->AddEntry(currentUpper, "Upper variation", "p");
   legend->AddEntry(currentLower, "Lower variation", "p");
   legend->Draw();
-  canvas->SaveAs(Form("compare_systematic_%s_AA_cent_0_r03_range_%d_iter_%d.pdf", fileLabel, range, iter));
+  canvas->SaveAs(Form("%s/compare_systematic_%s_AA_cent_%d_r03_range_%d_iter_%d.pdf", outputDir, fileLabel, centrality_bin, range, iter));
 }
 
 // Recreate the old x_J distribution from its saved flattened unfolded
@@ -164,26 +178,41 @@ TH1D *oldRatio(TFile &variation, TFile &nominal, const TEnv &config,
 }
 
 void compareSystematics_AA(
-    int range = 0,
-    int iter = 0,
-    const char *currentFile = "/home/tmengel/PPG14/dijet-unfolding-final/uncertainties/systematics_AA_cent_0_r03.root",
-    const char *referenceFile = "/home/tmengel/PPG14/sphenix_digitized_root_bundle/"
-                                "sphenix_xj_systematics_digitized.root")
+    int range = 1,
+    int iter = 1,
+    const char *currentFile = "/home/tmengel/PPG14/version1/dijet-unfolding-final/uncertainties/systematics_AA_cent_0_r03.root",
+    const char *referenceFile = "/home/tmengel/PPG14/version0/v001_20260715/uncertainties/systematics_AA_cent_0_r03.root",
+    const char *referenceConfigFile = "/home/tmengel/PPG14/version0/v001_20260715/uncertainties/uncertainties_AA_cent_0_r03_nominal.root",
+    const char *referenceHistDir = "/home/tmengel/PPG14/version0/v001_20260715/unfolding_hists",
+    const char *outputDir = "/home/tmengel/PPG14/version1/dijet-unfolding-final/comparison_plots",
+    int centrality_bin = 0)
 {
+  gSystem->mkdir(outputDir, true);
   gStyle->SetOptStat(0);
+  gStyle->SetOptTitle(0);
+  // #include "PlotUtils.h"
+  PlotUtils::set_sphenix_style();
+  
   TFile current(currentFile, "READ");
   TFile reference(referenceFile, "READ");
-  if (current.IsZombie() || reference.IsZombie()) {
+  std::cout << "Comparing systematics for range " << range << ", iter " << iter << std::endl;
+  if (current.IsZombie() || reference.IsZombie())
+  {
     Error("compareSystematics_AA", "Could not open one or both input files.");
     return;
   }
+  // print contents of current file
+  std::cout << "Current file contents:" << std::endl;
+  current.ls();
+  std::cout << "Reference file contents:" << std::endl;
+  // reference.ls();
 
   const TString totalName = Form("h_total_sys_range_%d_iter_%d", range, iter);
   const TString totalNegName = Form("h_total_sys_neg_range_%d_iter_%d", range, iter);
   TH1D *curTotalUp = getHist(current, totalName);
   TH1D *curTotalDown = getHist(current, totalNegName);
-  TGraph *oldUp = dynamic_cast<TGraph *>(reference.Get("total_systematics_upper"));
-  TGraph *oldDown = dynamic_cast<TGraph *>(reference.Get("total_systematics_lower"));
+  TH1D *rawOldUp = getHist(reference, totalName);
+  TH1D *rawOldDown = getHist(reference, totalNegName);
   TH1D *jesUp = getHist(current, Form("h_sys_posJES_range_%d_iter_%d", range, iter));
   TH1D *jesDown = getHist(current, Form("h_sys_negJES_range_%d_iter_%d", range, iter));
   TH1D *jerUp = getHist(current, Form("h_sys_posJER_range_%d_iter_%d", range, iter));
@@ -191,16 +220,27 @@ void compareSystematics_AA(
   TH1D *comb = getHist(current, Form("h_sys_COMB_range_%d_iter_%d", range, iter));
   TH1D *inclusive = getHist(current, Form("h_sys_INCLUSIVE_range_%d_iter_%d", range, iter));
   TH1D *prior = getHist(current, Form("h_sys_PRIOR_range_%d_iter_%d", range, iter));
-  if (!curTotalUp || !curTotalDown || !oldUp || !oldDown || !jesUp || !jesDown ||
+
+  if (!curTotalUp || !curTotalDown || !rawOldUp || !rawOldDown || !jesUp || !jesDown ||
       !jerUp || !jerDown || !comb || !inclusive || !prior) return;
+
 
   TH1D *totalUp = totalVariation(curTotalUp, true, "totalUp");
   TH1D *totalDown = totalVariation(curTotalDown, false, "totalDown");
+  // The reference file stores the same raw magnitude convention as the
+  // current file (see totalVariation above), not the Variation/Nominal
+  // ratio, so it needs the identical 1 +/- magnitude conversion.
+  TH1D *oldUp = totalVariation(rawOldUp, true, "oldTotalUp");
+  TH1D *oldDown = totalVariation(rawOldDown, false, "oldTotalDown");
+  // Plot the raw +/-JES ratios as-is (same convention as drawSys_AA.C's own
+  // JES plot), rather than reshaping them into a positive/negative envelope:
+  // makeEnvelope() flattens whichever side doesn't dominate and swaps sides
+  // wherever the two raw variations cross sign, which made this comparison
+  // plot's current-JES curve look unrelated to the raw one.
   TH1D *jesPositive = copyHist(jesUp, "jesPositive");
-  TH1D *jesNegative = copyHist(jesUp, "jesNegative");
+  TH1D *jesNegative = copyHist(jesDown, "jesNegative");
   TH1D *jerPositive = copyHist(jerUp, "jerPositive");
   TH1D *jerNegative = copyHist(jerUp, "jerNegative");
-  makeEnvelope(jesUp, jesDown, jesPositive, jesNegative);
   makeEnvelope(jerUp, jerDown, jerPositive, jerNegative);
   TH1D *combNegative = copyHist(comb, "combNegative");
   TH1D *inclusiveNegative = copyHist(inclusive, "inclusiveNegative");
@@ -211,20 +251,72 @@ void compareSystematics_AA(
     priorNegative->SetBinContent(bin, 2. - prior->GetBinContent(bin));
   }
 
-  // Digitized curves provide every old systematic directly.  Old ZYAM is
-  // represented by the digitized UE-background-subtraction pair.
-  TH1D *oldJESPositive = copyHist(getHist(reference, "JES_upper"), "oldJESPositive");
-  TH1D *oldJESNegative = copyHist(getHist(reference, "JES_lower"), "oldJESNegative");
-  TH1D *oldJERPositive = copyHist(getHist(reference, "JER_upper"), "oldJERPositive");
-  TH1D *oldJERNegative = copyHist(getHist(reference, "JER_lower"), "oldJERNegative");
-  TH1D *oldComb = copyHist(getHist(reference, "UE_background_subtraction_upper"), "oldComb");
-  TH1D *oldCombNegative = copyHist(getHist(reference, "UE_background_subtraction_lower"), "oldCombNegative");
-  TH1D *oldInclusive = copyHist(getHist(reference, "inclusive_upper"), "oldInclusive");
-  TH1D *oldInclusiveNegative = copyHist(getHist(reference, "inclusive_lower"), "oldInclusiveNegative");
-  TH1D *oldPriorRatio = copyHist(getHist(reference, "unfolding_upper"), "oldPrior");
-  TH1D *oldPriorNegative = copyHist(getHist(reference, "unfolding_lower"), "oldPriorNegative");
-  if (!oldJESPositive || !oldJESNegative || !oldJERPositive || !oldJERNegative || !oldComb ||
-      !oldCombNegative || !oldInclusive || !oldInclusiveNegative || !oldPriorRatio || !oldPriorNegative) return;
+  // Reconstruct the old individual systematics from the old analysis's raw
+  // per-variation unfolded spectra, since the reference systematics file
+  // only stores the combined total.  Any piece may come back null (e.g. the
+  // old analysis only covers range < 3), in which case the corresponding
+  // "old" comparison is simply omitted below.
+  TFile oldConfigFile(referenceConfigFile, "READ");
+  TEnv *oldConfig = oldConfigFile.IsZombie() ? nullptr : dynamic_cast<TEnv *>(oldConfigFile.Get("TEnv"));
+  TFile oldNominal(Form("%s/unfolding_hists_AA_cent_0_r03_nominal.root", referenceHistDir), "READ");
+  TFile oldPosJES(Form("%s/unfolding_hists_AA_cent_0_r03_posJES.root", referenceHistDir), "READ");
+  TFile oldNegJES(Form("%s/unfolding_hists_AA_cent_0_r03_negJES.root", referenceHistDir), "READ");
+  TFile oldPosJER(Form("%s/unfolding_hists_AA_cent_0_r03_posJER.root", referenceHistDir), "READ");
+  TFile oldNegJER(Form("%s/unfolding_hists_AA_cent_0_r03_negJER.root", referenceHistDir), "READ");
+  TFile oldZYAM(Form("%s/unfolding_hists_AA_cent_0_r03_ZYAM.root", referenceHistDir), "READ");
+  TFile oldInclusiveFile(Form("%s/unfolding_hists_AA_cent_0_r03_INCLUSIVE.root", referenceHistDir), "READ");
+  TFile oldPriorFile(Form("%s/unfolding_hists_AA_cent_0_r03_PRIOR.root", referenceHistDir), "READ");
+
+  TH1D *oldJESPositive = nullptr, *oldJESNegative = nullptr;
+  TH1D *oldJERPositive = nullptr, *oldJERNegative = nullptr;
+  TH1D *oldComb = nullptr, *oldCombNegative = nullptr;
+  TH1D *oldInclusive = nullptr, *oldInclusiveNegative = nullptr;
+  TH1D *oldPrior = nullptr, *oldPriorNegative = nullptr;
+  if (oldConfig) {
+    TH1D *oldJESUp = oldRatio(oldPosJES, oldNominal, *oldConfig, range, iter, "oldJESUp");
+    TH1D *oldJESDown = oldRatio(oldNegJES, oldNominal, *oldConfig, range, iter, "oldJESDown");
+    if (oldJESUp && oldJESDown) {
+      oldJESPositive = copyHist(oldJESUp, "oldJESPositive");
+      oldJESNegative = copyHist(oldJESUp, "oldJESNegative");
+      makeEnvelope(oldJESUp, oldJESDown, oldJESPositive, oldJESNegative);
+    }
+    TH1D *oldJERUp = oldRatio(oldPosJER, oldNominal, *oldConfig, range, iter, "oldJERUp");
+    TH1D *oldJERDown = oldRatio(oldNegJER, oldNominal, *oldConfig, range, iter, "oldJERDown");
+    if (oldJERUp && oldJERDown) {
+      oldJERPositive = copyHist(oldJERUp, "oldJERPositive");
+      oldJERNegative = copyHist(oldJERUp, "oldJERNegative");
+      makeEnvelope(oldJERUp, oldJERDown, oldJERPositive, oldJERNegative);
+    }
+    oldComb = oldRatio(oldZYAM, oldNominal, *oldConfig, range, iter, "oldComb");
+    oldInclusive = oldRatio(oldInclusiveFile, oldNominal, *oldConfig, range, iter, "oldInclusive");
+    oldPrior = oldRatio(oldPriorFile, oldNominal, *oldConfig, range, iter, "oldPrior");
+    if (oldComb) {
+      oldCombNegative = copyHist(oldComb, "oldCombNegative");
+      for (int bin = 1; bin <= oldComb->GetNbinsX(); ++bin)
+        oldCombNegative->SetBinContent(bin, 2. - oldComb->GetBinContent(bin));
+    }
+    if (oldInclusive) {
+      oldInclusiveNegative = copyHist(oldInclusive, "oldInclusiveNegative");
+      for (int bin = 1; bin <= oldInclusive->GetNbinsX(); ++bin)
+        oldInclusiveNegative->SetBinContent(bin, 2. - oldInclusive->GetBinContent(bin));
+    }
+    if (oldPrior) {
+      oldPriorNegative = copyHist(oldPrior, "oldPriorNegative");
+      for (int bin = 1; bin <= oldPrior->GetNbinsX(); ++bin)
+        oldPriorNegative->SetBinContent(bin, 2. - oldPrior->GetBinContent(bin));
+    }
+  } else {
+    Error("compareSystematics_AA", "Could not load reference TEnv config from %s; "
+          "individual old systematics will be omitted.", referenceConfigFile);
+  }
+
+  // The lowest x_J bin sits below the analysis's measured range and its
+  // content is a meaningless placeholder (e.g. the stored total systematic
+  // there is a fixed sentinel rather than a real quadrature sum), so it is
+  // excluded from every comparison plot by starting the display just above
+  // its upper edge instead of at a fixed x_J value.
+  const int firstDisplayedBin = totalUp->GetXaxis()->FindBin(0.3);
+  const double displayFloor = totalUp->GetXaxis()->GetBinUpEdge(firstDisplayedBin);
 
   TCanvas *canvas = new TCanvas("c_compareSystematics", "Systematics comparison", 1120, 650);
   TPad *plot = new TPad("plot", "", 0., 0., 0.62, 1.);
@@ -235,8 +327,7 @@ void compareSystematics_AA(
   plot->cd();
   totalUp->SetTitle(";x_{J};Variation / Nominal");
   totalUp->SetMinimum(0.0); totalUp->SetMaximum(2.0);
-  // The old analysis begins at x_J = 0.3; use the common plotted domain.
-  totalUp->GetXaxis()->SetRangeUser(0.3, 1.0);
+  totalUp->GetXaxis()->SetRangeUser(displayFloor, 1.0);
   totalUp->GetXaxis()->SetTitleSize(0.06); totalUp->GetYaxis()->SetTitleSize(0.06);
   totalUp->GetXaxis()->SetLabelSize(0.05); totalUp->GetYaxis()->SetLabelSize(0.05);
   totalUp->GetYaxis()->SetTitleOffset(1.05);
@@ -248,20 +339,19 @@ void compareSystematics_AA(
   drawPair(comb, combNegative, kOrange + 7);
   drawPair(inclusive, inclusiveNegative, kRed + 1);
   drawPair(prior, priorNegative, kRed - 2);
-  // Dotted old components.  Old ZYAM is the predecessor of current COMB.
-  drawPair(oldJESPositive, oldJESNegative, kCyan + 1);
-  drawPair(oldJERPositive, oldJERNegative, kMagenta + 1);
-  drawPair(oldComb, oldCombNegative, kOrange + 7);
-  drawPair(oldInclusive, oldInclusiveNegative, kRed + 1);
-  drawPair(oldPriorRatio, oldPriorNegative, kRed - 2);
-  for (TH1D *hist : {oldJESPositive, oldJESNegative, oldJERPositive, oldJERNegative,
-                      oldComb, oldCombNegative, oldInclusive, oldInclusiveNegative,
-                      oldPriorRatio, oldPriorNegative}) hist->SetLineStyle(3);
-  oldJESPositive->Draw("HIST SAME"); oldJESNegative->Draw("HIST SAME");
-  oldJERPositive->Draw("HIST SAME"); oldJERNegative->Draw("HIST SAME");
-  oldComb->Draw("HIST SAME"); oldCombNegative->Draw("HIST SAME");
-  oldInclusive->Draw("HIST SAME"); oldInclusiveNegative->Draw("HIST SAME");
-  oldPriorRatio->Draw("HIST SAME"); oldPriorNegative->Draw("HIST SAME");
+  // Reconstructed old components, dotted, same colors as their current
+  // counterparts.
+  struct OldSeries { TH1D *positive; TH1D *negative; int color; };
+  for (OldSeries series : {OldSeries{oldJESPositive, oldJESNegative, kCyan + 1},
+                           OldSeries{oldJERPositive, oldJERNegative, kMagenta + 1},
+                           OldSeries{oldComb, oldCombNegative, kOrange + 7},
+                           OldSeries{oldInclusive, oldInclusiveNegative, kRed + 1},
+                           OldSeries{oldPrior, oldPriorNegative, kRed - 2}}) {
+    if (!series.positive || !series.negative) continue;
+    styleLine(series.positive, series.color, 3);
+    styleLine(series.negative, series.color, 3);
+    series.positive->Draw("HIST SAME"); series.negative->Draw("HIST SAME");
+  }
   oldUp->SetLineColor(kBlack); oldUp->SetLineWidth(2); oldUp->SetLineStyle(3);
   oldDown->SetLineColor(kBlack); oldDown->SetLineWidth(2); oldDown->SetLineStyle(3);
   oldUp->Draw("L SAME"); oldDown->Draw("L SAME");
@@ -286,14 +376,13 @@ void compareSystematics_AA(
   legend->AddEntry(inclusive, "Inclusive", "l");
   legend->AddEntry(prior, "Unfolding", "l");
   legend->Draw();
-  canvas->SaveAs(Form("compare_systematics_AA_cent_0_r03_range_%d_iter_%d.pdf", range, iter));
+  canvas->SaveAs(Form("%s/compare_systematics_AA_cent_%d_r03_range_%d_iter_%d.pdf", outputDir, centrality_bin, range, iter));
 
-  TH1D *oldTotalUp = graphAsHistogram(oldUp, totalUp, "oldTotalUp");
-  TH1D *oldTotalDown = graphAsHistogram(oldDown, totalDown, "oldTotalDown");
-  saveIndividualSystematic(totalUp, totalDown, oldTotalUp, oldTotalDown, "Total systematics", "total", kBlack, range, iter);
-  saveIndividualSystematic(jesPositive, jesNegative, oldJESPositive, oldJESNegative, "JES systematics", "jes", kCyan + 1, range, iter);
-  saveIndividualSystematic(jerPositive, jerNegative, oldJERPositive, oldJERNegative, "JER systematics", "jer", kMagenta + 1, range, iter);
-  saveIndividualSystematic(comb, combNegative, oldComb, oldCombNegative, "UE background subtraction", "ue_background", kOrange + 7, range, iter);
-  saveIndividualSystematic(inclusive, inclusiveNegative, oldInclusive, oldInclusiveNegative, "Inclusive systematic", "inclusive", kRed + 1, range, iter);
-  saveIndividualSystematic(prior, priorNegative, oldPriorRatio, oldPriorNegative, "Unfolding systematic", "unfolding", kRed - 2, range, iter);
+  saveIndividualSystematic(totalUp, totalDown, oldUp, oldDown, "Total systematics", "total", kBlack, range, iter, displayFloor, outputDir, centrality_bin);
+  saveIndividualSystematic(jesPositive, jesNegative, oldJESPositive, oldJESNegative, "JES systematics", "jes", kCyan + 1, range, iter, displayFloor, outputDir, centrality_bin);
+  saveIndividualSystematic(jerPositive, jerNegative, oldJERPositive, oldJERNegative, "JER systematics", "jer", kMagenta + 1, range, iter, displayFloor, outputDir, centrality_bin);
+  saveIndividualSystematic(comb, combNegative, oldComb, oldCombNegative, "UE background subtraction", "ue_background", kOrange + 7, range, iter, displayFloor, outputDir, centrality_bin);
+  saveIndividualSystematic(inclusive, inclusiveNegative, oldInclusive, oldInclusiveNegative, "Inclusive systematic", "inclusive", kRed + 1, range, iter, displayFloor, outputDir, centrality_bin);
+  saveIndividualSystematic(prior, priorNegative, oldPrior, oldPriorNegative, "Unfolding systematic", "unfolding", kRed - 2, range, iter, displayFloor, outputDir, centrality_bin);
+  std::cout << "Saved individual systematic plots to " << outputDir << " for cent " << centrality_bin << ", range " << range << ", iter " << iter << std::endl;
 }

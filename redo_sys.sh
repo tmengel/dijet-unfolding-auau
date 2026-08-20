@@ -48,23 +48,23 @@ export TNUPLE_SIM_FILE_JET30="${DIJET_TNTUPLE_PATH}/TNTUPLE_DIJET_SIM_r0${conesi
 OPTION_A_SETTINGS=true
 export OPTION_A_SETTINGS
 
-root -l -q -b "createResponse_noempty_AA.cxx(\"${AUAU_CONFIG}\", 0, 10, ${conesize}, ${cent}, 1, ${OPTION_A_SETTINGS})"  # > "${DIJET_LOG_PATH}/createResponse_noempty_AA_cent${cent}_primer1.log" 2>&1
+root -l -q -b "createResponse_noempty_AA.cxx(\"${AUAU_CONFIG}\", 0, 10, ${conesize}, ${cent}, 1 )"  # > "${DIJET_LOG_PATH}/createResponse_noempty_AA_cent${cent}_primer1.log" 2>&1
 
 root -l -q -b "unfoldData_noempty_AA.cxx(\"${AUAU_CONFIG}\", 10, ${conesize}, ${cent}, 1)" # > "${DIJET_LOG_PATH}/unfoldData_noempty_AA_cent${cent}_primer1.log" 2>&1
 
 root -l -q -b "getCentralityReweighting.C(${conesize}, ${cent}, \"${AUAU_CONFIG}\")" # > "${DIJET_LOG_PATH}/getCentralityReweighting_AA_cent${cent}.log" 2>&1
 
-root -l -q -b "createResponse_noempty_AA.cxx(\"${AUAU_CONFIG}\", 0, 10, ${conesize}, ${cent}, 2, ${OPTION_A_SETTINGS})"  # > "${DIJET_LOG_PATH}/createResponse_noempty_AA_cent${cent}_primer2.log" 2>&1
+root -l -q -b "createResponse_noempty_AA.cxx(\"${AUAU_CONFIG}\", 0, 10, ${conesize}, ${cent}, 2 )"  # > "${DIJET_LOG_PATH}/createResponse_noempty_AA_cent${cent}_primer2.log" 2>&1
 
-root -l -q -b "unfoldData_noempty_AA.cxx(\"${AUAU_CONFIG}\", 10, ${conesize}, ${cent}, 2)" > "${DIJET_LOG_PATH}/unfoldData_noempty_AA_cent${cent}_primer2.log" 2>&1
+root -l -q -b "unfoldData_noempty_AA.cxx(\"${AUAU_CONFIG}\", 10, ${conesize}, ${cent}, 2)" # > "${DIJET_LOG_PATH}/unfoldData_noempty_AA_cent${cent}_primer2.log" 2>&1
  
-root -l -q -b "createResponse_noempty_AA.cxx(\"${AUAU_CONFIG}\", 0, 10, ${conesize}, ${cent}, 0, ${OPTION_A_SETTINGS})" #  > "${DIJET_LOG_PATH}/createResponse_noempty_AA_cent${cent}.log" 2>&1
+root -l -q -b "createResponse_noempty_AA.cxx(\"${AUAU_CONFIG}\", 0, 10, ${conesize}, ${cent}, 0 )" #  > "${DIJET_LOG_PATH}/createResponse_noempty_AA_cent${cent}.log" 2>&1
 
 root -l -q -b "validateReweighting_AA.C(${conesize}, ${cent}, \"${AUAU_CONFIG}\")"  # > "${DIJET_LOG_PATH}/validateReweighting_AA_cent${cent}.log" 2>&1
 
 root -l -q -b "unfoldData_noempty_AA.cxx(\"${AUAU_CONFIG}\", 10, ${conesize}, ${cent})"  #>  "${DIJET_LOG_PATH}/unfoldData_noempty_AA_cent${cent}.log" 2>&1
 
-root -l -q -b "unfoldDataUncertainties_noempty_AA.cxx(10, ${conesize}, ${cent})" > "${DIJET_LOG_PATH}/unfoldDataUncertainties_noempty_AA_cent${cent}.log" 2>&1
+root -l -q -b "unfoldDataUncertainties_noempty_AA.cxx(10, ${conesize}, ${cent})" # > "${DIJET_LOG_PATH}/unfoldDataUncertainties_noempty_AA_cent${cent}.log" 2>&1
 
 bash run_all_sys_AA.sh ${conesize} ${cent} ${DIJET_CONFIG_PATH}/binning_negJES_AA.config
 bash run_all_sys_AA.sh ${conesize} ${cent} ${DIJET_CONFIG_PATH}/binning_posJES_AA.config
@@ -88,8 +88,8 @@ bash run_all_sys_AA.sh ${conesize} ${cent} ${DIJET_CONFIG_PATH}/binning_Inclusiv
 
 root -l -b -q "drawSys_AA.C(${conesize}, ${cent} )"
 
-root -l -b -q "createResponse_noempty_AA.cxx(\"${AUAU_CONFIG}\",2,10,${conesize},${cent},0,${OPTION_A_SETTINGS})"
-root -l -b -q "createResponse_noempty_AA.cxx(\"${AUAU_CONFIG}\",1,10,${conesize},${cent},0,${OPTION_A_SETTINGS})"
+root -l -b -q "createResponse_noempty_AA.cxx(\"${AUAU_CONFIG}\",2,10,${conesize},${cent},0)"
+root -l -b -q "createResponse_noempty_AA.cxx(\"${AUAU_CONFIG}\",1,10,${conesize},${cent},0)"
 root -l -b -q "drawClosureTests_AA.C(${conesize},${cent},1,\"${AUAU_CONFIG}\")"
 # root -l -b -q "drawClosureTests_AA.C(${conesize},${cent},2,\"${AUAU_CONFIG}\")"
 

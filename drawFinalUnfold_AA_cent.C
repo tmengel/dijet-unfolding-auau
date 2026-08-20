@@ -174,7 +174,12 @@ void drawFinalUnfold_AA_cent(const int cone_size = 3, const int centrality_bin =
   if (NUCLEAR) std::cout << __LINE__ << std::endl;
   
   const int niterations = 10;
+  // pp nominal iteration (no centrality dependence, matches createResponse.C).
   const int niter = 1;
+  // AA nominal iteration (0-indexed) -> N_iter = 2; matches the prior_iteration
+  // constant in createResponse_noempty_AA.cxx. Kept as a per-centrality helper
+  // so the AA and pp choices stay independent at each call site.
+  auto niter_for_cent = [](int /*cent*/) { return 1; };
   //pp results
   TProfile *hp_xj_rms_pp[mbins][niterations];
   TFile *finupp = new TFile(Form("%s/uncertainties/uncertainties_pp_r%02d_nominal.root",  rb.get_code_location().c_str(), cone_size),"r");
@@ -565,6 +570,64 @@ void drawFinalUnfold_AA_cent(const int cone_size = 3, const int centrality_bin =
 
     }
 
+  // Override the pp central values / systematics computed above with the pre-built
+  // final pp results in final_plots_pp_r03.root, instead of the values just derived
+  // from uncertainties_pp/systematics_pp/unfolding_hists_pp.
+  {
+    TFile *fpp_final = new TFile(Form("%s/final_plots_pp_r03.root", rb.get_code_location().c_str()), "r");
+    if (!fpp_final || fpp_final->IsZombie())
+      {
+	std::cout << " no pp final results file " << std::endl;
+	return;
+      }
+    // Each pre-built pp point is placed in the bin that contains its own x,
+    // rather than counting up from a fixed starting bin. final_plots_pp_r03.root
+    // is produced separately, so the bin its graphs start at moves whenever that
+    // file is regenerated; assuming a fixed offset silently shifts the markers
+    // relative to their systematic boxes.
+    for (int irange = 0; irange < mbins; irange++)
+      {
+	for (int iter = 0; iter < niterations; iter++)
+	  {
+	    TGraphAsymmErrors *g_stat = (TGraphAsymmErrors*) fpp_final->Get(Form("g_final_xj_statistics_%d_%d", irange, iter));
+	    TGraphAsymmErrors *g_sys  = (TGraphAsymmErrors*) fpp_final->Get(Form("g_final_xj_systematics_%d_%d", irange, iter));
+
+	    TH1D *h_pp = h_final_xj_pp_unfold_range[irange][iter];
+	    h_pp->Reset();
+	    g_final_xj_pp_systematics[irange][iter] = new TGraphAsymmErrors(h_pp);
+	    for (int ib = 1; ib <= nbins; ib++)
+	      {
+		g_final_xj_pp_systematics[irange][iter]->SetPoint(ib - 1, h_pp->GetBinCenter(ib), 0);
+		g_final_xj_pp_systematics[irange][iter]->SetPointError(ib - 1, h_pp->GetBinWidth(ib)/2., h_pp->GetBinWidth(ib)/2., 0, 0);
+	      }
+
+	    int npts = g_stat ? g_stat->GetN() : 0;
+	    for (int j = 0; j < npts; j++)
+	      {
+		double x, y, sx, sy;
+		g_stat->GetPoint(j, x, y);
+		const int bin = h_pp->FindBin(x);
+		if (bin < 1 || bin > nbins) continue;
+		h_pp->SetBinContent(bin, y);
+		h_pp->SetBinError(bin, g_stat->GetErrorYhigh(j));
+
+		g_sys->GetPoint(j, sx, sy);
+		// Anchor the systematic box on the same bin centre as the marker.
+		g_final_xj_pp_systematics[irange][iter]->SetPoint(bin - 1, h_pp->GetBinCenter(bin), sy);
+		double exlow = g_final_xj_pp_systematics[irange][iter]->GetErrorXlow(bin - 1);
+		double exhigh = g_final_xj_pp_systematics[irange][iter]->GetErrorXhigh(bin - 1);
+		g_final_xj_pp_systematics[irange][iter]->SetPointError(bin - 1, exlow, exhigh, g_sys->GetErrorYlow(j), g_sys->GetErrorYhigh(j));
+	      }
+	  }
+      }
+
+    for (int irange = 0; irange < mbins; irange++)
+      {
+	TH1D *h_data_file = (TH1D*) fpp_final->Get(Form("h_final_xj_data_range_%d", irange));
+	if (h_data_file) h_final_xj_pp_data_range[irange] = (TH1D*) h_data_file->Clone(Form("h_final_xj_pp_data_range_%d", irange));
+      }
+  }
+
   TCanvas *cxj_money = new TCanvas("cxj_money","cxj_money", 700, 500);
   
   TGraphAsymmErrors *g_final_xj_unfold_range[5][3];
@@ -578,7 +641,7 @@ void drawFinalUnfold_AA_cent(const int cone_size = 3, const int centrality_bin =
 	  TH1D *h = (TH1D*) h_final_xj_pp_unfold_range[i][niter]->Clone();
 	  if (j < 4)
 	    {
-	      h = (TH1D*) h_final_xj_unfold_range[j][i][niter]->Clone();
+	      h = (TH1D*) h_final_xj_unfold_range[j][i][niter_for_cent(j)]->Clone();
 	    }
 	  else
 	    {
@@ -605,9 +668,9 @@ void drawFinalUnfold_AA_cent(const int cone_size = 3, const int centrality_bin =
 		g_final_xj_unfold_range[j][i]->SetPointError(b-1, 0,0, ey, ey);
 		if (j < 4)
 		  {
-		    g_final_xj_systematics[j][i][niter]->SetPointEXhigh(b-1, exhigh);
-		    g_final_xj_systematics[j][i][niter]->SetPointEXlow(b-1, exlow); 
-		    g_final_xj_systematics[j][i][niter]->SetPointX(b-1, -9999);
+		    g_final_xj_systematics[j][i][niter_for_cent(j)]->SetPointEXhigh(b-1, exhigh);
+		    g_final_xj_systematics[j][i][niter_for_cent(j)]->SetPointEXlow(b-1, exlow);
+		    g_final_xj_systematics[j][i][niter_for_cent(j)]->SetPointX(b-1, -9999);
 		  }
 		else
 		  {
@@ -625,9 +688,9 @@ void drawFinalUnfold_AA_cent(const int cone_size = 3, const int centrality_bin =
 		g_final_xj_unfold_range[j][i]->SetPointError(b-1, 0,0, ey, ey);
 		if (j < 4)
 		  {
-		    g_final_xj_systematics[j][i][niter]->SetPointEXhigh(b-1, exhigh);
-		    g_final_xj_systematics[j][i][niter]->SetPointEXlow(b-1, exlow); 
-		    g_final_xj_systematics[j][i][niter]->SetPointX(b-1, sx);
+		    g_final_xj_systematics[j][i][niter_for_cent(j)]->SetPointEXhigh(b-1, exhigh);
+		    g_final_xj_systematics[j][i][niter_for_cent(j)]->SetPointEXlow(b-1, exlow);
+		    g_final_xj_systematics[j][i][niter_for_cent(j)]->SetPointX(b-1, sx);
 		  }
 		else
 		  {
@@ -650,10 +713,10 @@ void drawFinalUnfold_AA_cent(const int cone_size = 3, const int centrality_bin =
 	  dlutility::SetMarkerAtt(g_final_xj_unfold_range[ic][irange], color_unfold[ic], msize_unfold[ic], marker_unfold[ic]);
 	  if (ic < 4)
 	    {
-	      dlutility::SetLineAtt(g_final_xj_systematics[ic][irange][niter], color_unfold[ic], lsize_unfold, 1);
-	      dlutility::SetMarkerAtt(g_final_xj_systematics[ic][irange][niter], color_unfold[ic], msize_unfold[ic], marker_unfold[ic]);
-	      
-	      g_final_xj_systematics[ic][irange][niter]->SetFillColorAlpha(color_unfold_fill[ic], 0.2); 
+	      dlutility::SetLineAtt(g_final_xj_systematics[ic][irange][niter_for_cent(ic)], color_unfold[ic], lsize_unfold, 1);
+	      dlutility::SetMarkerAtt(g_final_xj_systematics[ic][irange][niter_for_cent(ic)], color_unfold[ic], msize_unfold[ic], marker_unfold[ic]);
+
+	      g_final_xj_systematics[ic][irange][niter_for_cent(ic)]->SetFillColorAlpha(color_unfold_fill[ic], 0.2);
 	    }
 	  else
 	    {
@@ -689,7 +752,7 @@ void drawFinalUnfold_AA_cent(const int cone_size = 3, const int centrality_bin =
       g_final_xj_unfold_range[0][irange]->Draw("same p E");
       for (int ic = 0; ic < cent_bins; ic ++)
 	{
-	  g_final_xj_systematics[ic][irange][niter]->Draw("same p E2");
+	  g_final_xj_systematics[ic][irange][niter_for_cent(ic)]->Draw("same p E2");
 	}
       g_final_xj_pp_systematics[irange][niter]->Draw("same p E2");
       //hs->Draw("same p E2");
@@ -733,9 +796,9 @@ void drawFinalUnfold_AA_cent(const int cone_size = 3, const int centrality_bin =
 	  //ht->Draw("E4 same");
 	  hh->Draw("hist");
 	  g_final_xj_unfold_range[0][irange]->Draw("same p E0");
-	  g_final_xj_systematics[0][irange][niter]->Draw("same p E2");
+	  g_final_xj_systematics[0][irange][niter_for_cent(0)]->Draw("same p E2");
 
-	  if (cent != 0)	  g_final_xj_systematics[cent][irange][niter]->Draw("same p E2");
+	  if (cent != 0)	  g_final_xj_systematics[cent][irange][niter_for_cent(cent)]->Draw("same p E2");
 
 	  g_final_xj_pp_systematics[irange][niter]->Draw("same p E2");
 	  //hs->Draw("same p E2");

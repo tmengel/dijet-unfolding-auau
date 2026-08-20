@@ -49,7 +49,7 @@ TFile *open_required(const TString &path)
 void drawFinalUnfold_AA_only(const int cone_size = 3,
                              const int centrality_bin = 0,
                              const std::string configfile = "binning_AA.config",
-                             const int niter = 1)
+                             const int niter_arg = -1)
 {
   gStyle->SetOptStat(0);
   gStyle->SetErrorX(0.0001);
@@ -86,6 +86,9 @@ void drawFinalUnfold_AA_only(const int cone_size = 3,
 
   const int measure_subleading_bin = rb.get_measure_subleading_bin();
   const int niterations = 10;
+  // Nominal Bayesian-iteration index (0-indexed) -> N_iter = 2; matches the
+  // prior_iteration constant in createResponse_noempty_AA.cxx.
+  const int niter = (niter_arg >= 0) ? niter_arg : 1;
   if (niter < 0 || niter >= niterations)
     {
       std::cerr << "Requested iteration " << niter << " is outside [0, "

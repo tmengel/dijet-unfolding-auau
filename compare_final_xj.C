@@ -72,6 +72,11 @@ void compare_final_xj(const char *file_v1,
                       bool compare_pp = false)
 {
 
+
+    gStyle->SetOptStat(0);
+  gStyle->SetOptTitle(0);
+  // #include "PlotUtils.h"
+  PlotUtils::set_sphenix_style();
   gStyle->SetCanvasPreferGL(0);
   gStyle->SetOptStat(0);
   // dlutility::SetyjPadStyle();

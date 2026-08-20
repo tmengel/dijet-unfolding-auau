@@ -557,6 +557,65 @@ void drawFinalUnfold_AA(const int cone_size = 3, const int centrality_bin = 0, c
 	}
 
     }
+
+  // Override the pp central values / systematics computed above with the pre-built
+  // final pp results in final_plots_pp_r03.root, instead of the values just derived
+  // from uncertainties_pp/systematics_pp/unfolding_hists_pp.
+  {
+    TFile *fpp_final = new TFile(Form("%s/final_plots_pp_r03.root", rb.get_code_location().c_str()), "r");
+    if (!fpp_final || fpp_final->IsZombie())
+      {
+	std::cout << " no pp final results file " << std::endl;
+	return;
+      }
+    // Each pre-built pp point is placed in the bin that contains its own x,
+    // rather than counting up from a fixed starting bin. final_plots_pp_r03.root
+    // is produced separately, so the bin its graphs start at moves whenever that
+    // file is regenerated; assuming a fixed offset silently shifts the markers
+    // relative to their systematic boxes.
+    for (int irange = 0; irange < mbins; irange++)
+      {
+	for (int iter = 0; iter < niterations; iter++)
+	  {
+	    TGraphAsymmErrors *g_stat = (TGraphAsymmErrors*) fpp_final->Get(Form("g_final_xj_statistics_%d_%d", irange, iter));
+	    TGraphAsymmErrors *g_sys  = (TGraphAsymmErrors*) fpp_final->Get(Form("g_final_xj_systematics_%d_%d", irange, iter));
+
+	    TH1D *h_pp = h_final_xj_pp_unfold_range[irange][iter];
+	    h_pp->Reset();
+	    g_final_xj_pp_systematics[irange][iter] = new TGraphAsymmErrors(h_pp);
+	    for (int ib = 1; ib <= nbins; ib++)
+	      {
+		g_final_xj_pp_systematics[irange][iter]->SetPoint(ib - 1, h_pp->GetBinCenter(ib), 0);
+		g_final_xj_pp_systematics[irange][iter]->SetPointError(ib - 1, h_pp->GetBinWidth(ib)/2., h_pp->GetBinWidth(ib)/2., 0, 0);
+	      }
+
+	    int npts = g_stat ? g_stat->GetN() : 0;
+	    for (int j = 0; j < npts; j++)
+	      {
+		double x, y, sx, sy;
+		g_stat->GetPoint(j, x, y);
+		const int bin = h_pp->FindBin(x);
+		if (bin < 1 || bin > nbins) continue;
+		h_pp->SetBinContent(bin, y);
+		h_pp->SetBinError(bin, g_stat->GetErrorYhigh(j));
+
+		g_sys->GetPoint(j, sx, sy);
+		// Anchor the systematic box on the same bin centre as the marker.
+		g_final_xj_pp_systematics[irange][iter]->SetPoint(bin - 1, h_pp->GetBinCenter(bin), sy);
+		double exlow = g_final_xj_pp_systematics[irange][iter]->GetErrorXlow(bin - 1);
+		double exhigh = g_final_xj_pp_systematics[irange][iter]->GetErrorXhigh(bin - 1);
+		g_final_xj_pp_systematics[irange][iter]->SetPointError(bin - 1, exlow, exhigh, g_sys->GetErrorYlow(j), g_sys->GetErrorYhigh(j));
+	      }
+	  }
+      }
+
+    for (int irange = 0; irange < mbins; irange++)
+      {
+	TH1D *h_data_file = (TH1D*) fpp_final->Get(Form("h_final_xj_data_range_%d", irange));
+	if (h_data_file) h_final_xj_pp_data_range[irange] = (TH1D*) h_data_file->Clone(Form("h_final_xj_pp_data_range_%d", irange));
+      }
+  }
+
   if (NUCLEAR) std::cout << __LINE__ << std::endl;
   // Subleading
   for (int irange = 0; irange < mbins; irange++)
@@ -585,6 +644,8 @@ void drawFinalUnfold_AA(const int cone_size = 3, const int centrality_bin = 0, c
   if (NUCLEAR) std::cout << __LINE__ << std::endl;
   TCanvas *cxj = new TCanvas("cxj","cxj", 500, 700);
   dlutility::ratioPanelCanvas(cxj);
+  // Nominal Bayesian-iteration index (0-indexed) -> N_iter = 2; matches the
+  // prior_iteration constant in createResponse_noempty_AA.cxx.
   int niter = 1;
 
   for (int irange = 0; irange < mbins; irange++)

@@ -1,8 +1,16 @@
 #include "dlUtility.h"
 #include "read_binning.h"
+
+#include "PlotUtils.h"
+
 void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0)
 {
 
+
+    gStyle->SetOptStat(0);
+  gStyle->SetOptTitle(0);
+  // #include "PlotUtils.h"
+  PlotUtils::set_sphenix_style();
   read_binning rb(std::getenv("AUAU_CONFIG"));
 
   Int_t read_nbins = rb.get_nbins();
@@ -89,7 +97,7 @@ void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0)
       h_xj_unfold[iter] = (TH1D*) fr->Get(Form("h_xj_unfold_iter%d", iter));
     }
 
-  TString response_halfpath = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_HALF.root", centrality_bin, cone_size);
+  TString response_halfpath = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_HALF_nominal.root", centrality_bin, cone_size);
   TFile *frh = new TFile(response_halfpath.Data(),"r");
 
   TH1D *h_xj_half_reco = (TH1D*) frh->Get("h_xj_reco");
@@ -132,7 +140,7 @@ void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0)
   dlutility::DrawSPHENIX_Prelim(0.93, 0.4);
   dlutility::drawText("Response matrix", 0.93, 0.3, 1);
 
-  cresponseskimzoom->Print("response_matrix_zoom.pdf");
+  cresponseskimzoom->Print(Form("%s/unfolding_plots/response_matrix_zoom_AA_cent_%d_r%02d.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size));
 
   TCanvas *cxj = new TCanvas("cxj","cxj", 500, 700);
 
@@ -185,7 +193,7 @@ void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0)
       line->SetLineColor(kRed + 3);
       line->SetLineWidth(2);
       line->Draw("same");
-      cxj->Print(Form("full_closure_iter_%d.pdf", iter));
+      cxj->Print(Form("%s/unfolding_plots/full_closure_AA_cent_%d_r%02d_iter_%d.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size, iter));
     }
 
   TCanvas *cxjh = new TCanvas("cxjh","cxjh", 500, 700);
@@ -238,7 +246,7 @@ void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0)
       line->SetLineColor(kRed + 3);
       line->SetLineWidth(2);
       line->Draw("same");
-      cxjh->Print(Form("half_closure_iter_%d.pdf", iter));
+      cxjh->Print(Form("%s/unfolding_plots/half_closure_AA_cent_%d_r%02d_iter_%d.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size, iter));
     }
 
   return;

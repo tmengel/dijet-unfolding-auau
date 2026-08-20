@@ -23,6 +23,18 @@ constexpr double kFlowFitHigh = 2.5;
 constexpr double kNormalizationLow = 0.8;
 constexpr double kNormalizationHigh = 2.5;
 
+// Canvas margins and legend placement, shared so the y-axis headroom below
+// can be computed to always clear the legend.  The tallest bin is the last
+// one (signal region, highest Delta-phi), which sits at the same pad
+// x-position as the legend in every centrality bin, so without enough
+// headroom it pokes up behind the legend text.
+constexpr double kLeftMargin = 0.12;
+constexpr double kRightMargin = 0.04;
+constexpr double kTopMargin = 0.04;
+constexpr double kBottomMargin = 0.12;
+constexpr double kLegendX1 = 0.50, kLegendY1 = 0.55, kLegendX2 = 0.94, kLegendY2 = 0.93;
+constexpr double kLegendClearance = 0.05;
+
 void addNormalizedBackground(TH1D *sum, TH1D *pairDphi,
                              const TF1 &fit, const double v22Scale,
                              const double v33Scale)
@@ -203,16 +215,21 @@ void drawCOMBModulation_AA(const int cone_size = 3,
                                 upSubtracted.get()})
     minimum = std::min(minimum, histogram->GetMinimum());
   raw->SetMinimum(std::min(-0.08*raw->GetMaximum(), 1.15*minimum));
-  raw->SetMaximum(1.55*raw->GetMaximum());
+  // The last (tallest) bin sits directly below the legend in pad x, so pick
+  // enough headroom that its frame-fraction height stays under the legend's
+  // bottom edge (with kLegendClearance to spare) regardless of the data.
+  const double frameFraction = 1.0 - kTopMargin - kBottomMargin;
+  const double maxPeakFraction = (kLegendY1 - kBottomMargin)/frameFraction - kLegendClearance;
+  raw->SetMaximum(raw->GetMaximum()/maxPeakFraction);
   raw->GetXaxis()->SetTitleOffset(1.05);
   raw->GetYaxis()->SetTitleOffset(1.25);
 
   gSystem->mkdir(Form("%s/unfolding_plots", rb.get_code_location().c_str()), true);
   TCanvas canvas("c_dphi_comb", "c_dphi_comb", 650, 560);
-  canvas.SetLeftMargin(0.12);
-  canvas.SetRightMargin(0.04);
-  canvas.SetTopMargin(0.04);
-  canvas.SetBottomMargin(0.12);
+  canvas.SetLeftMargin(kLeftMargin);
+  canvas.SetRightMargin(kRightMargin);
+  canvas.SetTopMargin(kTopMargin);
+  canvas.SetBottomMargin(kBottomMargin);
   raw->Draw("hist");
   normalizationRegion->Draw("hist same");
   signalRegion->Draw("hist same");
@@ -233,7 +250,7 @@ void drawCOMBModulation_AA(const int cone_size = 3,
                            centralityBins[centrality_bin + 1]),
                       0.18, 0.70, 0, kBlack, 0.038);
 
-  TLegend legend(0.50, 0.55, 0.94, 0.93);
+  TLegend legend(kLegendX1, kLegendY1, kLegendX2, kLegendY2);
   legend.SetBorderSize(0);
   legend.SetFillStyle(0);
   legend.SetTextSize(0.030);

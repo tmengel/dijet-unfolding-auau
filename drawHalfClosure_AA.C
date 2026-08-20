@@ -27,7 +27,7 @@ const int color_data = kAzure - 6;
 const float marker_data = 24;
 const float msize_data = 0.9;
 const float lsize_data = 1.1;
-void drawFullClosure_AA(const int cone_size = 3, const int centrality_bin = 0)
+void drawHalfClosure_AA(const int cone_size = 3, const int centrality_bin = 0)
 {
   gStyle->SetCanvasPreferGL(0);
   gStyle->SetOptStat(0);
@@ -37,7 +37,7 @@ void drawFullClosure_AA(const int cone_size = 3, const int centrality_bin = 0)
   read_binning rb(std::getenv("AUAU_CONFIG"));
 
   Double_t first_xj = rb.get_first_xj();
-  
+
   Int_t read_nbins = rb.get_nbins();
 
   Double_t dphicut = rb.get_dphicut();
@@ -72,7 +72,7 @@ void drawFullClosure_AA(const int cone_size = 3, const int centrality_bin = 0)
 
   float measure_leading_cut = rb.get_measure_leading_cut();
   float measure_subleading_cut = rb.get_measure_subleading_cut();
-    
+
   int truth_leading_bin = rb.get_truth_leading_bin();
   int truth_subleading_bin = rb.get_truth_subleading_bin();
 
@@ -104,9 +104,9 @@ void drawFullClosure_AA(const int cone_size = 3, const int centrality_bin = 0)
   std::cout << "Truth2: " <<  truth_subleading_cut << std::endl;
   std::cout << "Reco 2: " <<  reco_subleading_cut << std::endl;
   std::cout << "Meas 2: " <<  measure_subleading_cut << std::endl;
-  
 
-  TFile *fin = new TFile(Form("%s/response_matrices/response_matrix_AA_cent_%d_r%02d_nominal.root", rb.get_code_location().c_str(), centrality_bin, cone_size),"r");
+
+  TFile *fin = new TFile(Form("%s/response_matrices/response_matrix_AA_cent_%d_r%02d_HALF_nominal.root", rb.get_code_location().c_str(), centrality_bin, cone_size),"r");
   if (!fin)
     {
       std::cout << " no file " << std::endl;
@@ -150,7 +150,7 @@ void drawFullClosure_AA(const int cone_size = 3, const int centrality_bin = 0)
 	  h_xj_unfold_range[irange][iter] = new TH1D(Form("h_xj_unfold_%d_iter%d", irange, iter), ";x_{J};",nbins, ixj_bins);
 	}
     }
-  
+
   histo_opps::make_sym_pt1pt2(h_flat_truth_pt1pt2, h_pt1pt2_truth, nbins);
   histo_opps::make_sym_pt1pt2(h_flat_reco_pt1pt2, h_pt1pt2_reco, nbins);
   for (int iter = 0; iter < niterations; iter++)
@@ -164,7 +164,7 @@ void drawFullClosure_AA(const int cone_size = 3, const int centrality_bin = 0)
     {
       histo_opps::project_xj(h_pt1pt2_unfold[iter], h_xj_unfold[iter], nbins, measure_leading_bin, nbins - 2, measure_subleading_bin, nbins - 2);
     }
-  
+
   histo_opps::normalize_histo(h_xj_truth, nbins);
   histo_opps::normalize_histo(h_xj_reco, nbins);
   for (int iter = 0; iter < niterations; iter++)
@@ -242,7 +242,7 @@ void drawFullClosure_AA(const int cone_size = 3, const int centrality_bin = 0)
 
 	  h_final_xj_reco_range[irange]->Draw("same p");
 
-      
+
 	  dlutility::DrawSPHENIX(0.22, 0.84);
 	  dlutility::drawText(Form("anti-#it{k}_{t} #it{R} = %0.1f", cone_size*0.1), 0.22, 0.74);
 	  dlutility::drawText(Form("%2.1f #leq #it{p}_{T,1} < %2.1f GeV ", ipt_bins[measure_bins[irange]], ipt_bins[measure_bins[irange+1]]), 0.22, 0.69);
@@ -253,9 +253,9 @@ void drawFullClosure_AA(const int cone_size = 3, const int centrality_bin = 0)
 	  leg->SetLineWidth(0);
 	  leg->SetTextSize(0.04);
 	  leg->SetTextFont(42);
-	  leg->AddEntry(h_final_xj_truth_range[irange], "Training Truth","p");
-	  leg->AddEntry(h_final_xj_reco_range[irange], "Training Reco ","p");
-	  leg->AddEntry(h_final_xj_unfold_range[irange][niter], "Training Unfold","p");
+	  leg->AddEntry(h_final_xj_truth_range[irange], "Testing Truth","p");
+	  leg->AddEntry(h_final_xj_reco_range[irange], "Testing Reco ","p");
+	  leg->AddEntry(h_final_xj_unfold_range[irange][niter], "Testing Unfold","p");
 	  leg->Draw("same");
 
 	  cxj->cd(2);
@@ -277,8 +277,8 @@ void drawFullClosure_AA(const int cone_size = 3, const int centrality_bin = 0)
 	  line->SetLineColor(kRed + 3);
 	  line->SetLineWidth(2);
 	  line->Draw("same");
-	  cxj->Print(Form("%s/unfolding_plots/h_xj_full_closure_AA_cent_%d_r%02d_range_%d_iter_%d.png", rb.get_code_location().c_str(), centrality_bin, cone_size, irange, niter));
-	  cxj->Print(Form("%s/unfolding_plots/h_xj_full_closure_AA_cent_%d_r%02d_range_%d_iter_%d.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size, irange, niter));
+	  cxj->Print(Form("%s/unfolding_plots/h_xj_half_closure_AA_cent_%d_r%02d_range_%d_iter_%d.png", rb.get_code_location().c_str(), centrality_bin, cone_size, irange, niter));
+	  cxj->Print(Form("%s/unfolding_plots/h_xj_half_closure_AA_cent_%d_r%02d_range_%d_iter_%d.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size, irange, niter));
 	}
     }
   return;

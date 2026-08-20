@@ -85,6 +85,8 @@ void validateReweighting_AA(const int cone_size = 3,
                             const int centrality_bin = 0,
                             const std::string configfile = "binning_AA.config")
 {
+  gStyle->SetOptStat(0);
+  gStyle->SetOptTitle(0);
   read_binning rb(configfile);
   const std::string system = "AA_cent_" + std::to_string(centrality_bin);
   const TString beforePath = Form(
