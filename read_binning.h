@@ -321,6 +321,7 @@ public:
   // (built by jer/remake_smear_functions.C from the preliminary file).
   // jer_smear_functions_prelim_8pct_base.root holds the preliminary
   // 8%/5%/11% functions for cross-checks only.
+  // std::string jerfile = "jer/jer_smear_functions.root";
   std::string jerfile = "jer/jer_smear_functions.root";
   TFile *fjer{nullptr};
   TEnv *penv{nullptr};

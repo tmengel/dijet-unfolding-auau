@@ -3,14 +3,12 @@
 #include <cstdlib>
 #include <cmath>
 #include <fstream>
+#include <limits>
 #include <vector>
 
 #include "TNtuple.h"
 #include "TRandom.h"
 #include "TStyle.h"
-
-using std::cout;
-using std::endl;
 
 #include "RooUnfoldResponse.h"
 #include "RooUnfoldBayes.h"
@@ -18,45 +16,74 @@ using std::endl;
 #include "dlUtility.h"
 #include "read_binning.h"
 #include "histo_opps.h"
+#include "PlotUtils.h"
+#include "priorReweightQA.h"
 
-int createResponse_noempty_AA (
+int createResponse_noempty_AA_v2 (
 	const std::string configfile = "binning.config", 
 	const int full_or_half = 0, 
 	const int niterations = 10, 
 	const int cone_size = 4, 
 	const int centrality_bin = 0, 
-	const int primer = 0,
-	const bool OPTION_A_SETTINGS = false)
+	const int primer = 0
+)
 {
 
 	gStyle->SetOptStat(0);
-	dlutility::SetyjPadStyle();
-	if (full_or_half < 0 || full_or_half > 2)
-	{
-		std::cerr << "Closure mode must be 0 (analysis), 1 (half closure), or 2 (full closure)"	<< std::endl;
-		return 1;
-	}
-	
-	const bool half_closure = (full_or_half == 1);
-	const bool full_closure = (full_or_half == 2);
-	const bool full_or_half_closure = (full_or_half != 0);
+	gStyle->SetOptFit(0);
+	gStyle->SetOptTitle(0);
+	gStyle->SetOptStat(0);
+  	gStyle->SetOptTitle(0);
+ 	PlotUtils::set_sphenix_style();
 
-	bool ispp = (centrality_bin < 0);
+	const bool OVERRIDE_EVENT_WEIGHT = false;
+	const bool DO_CENT_EVENT_WEIGHT = false;
+	const bool DO_CENT_CUT = false;
+	const double prior_var = 0.5;
+	const double prior_norm = 1.0;
+	// Space in which the prior fraction is applied (see priorReweightQA.h):
+	//   kBlendXJ     - blend the xJ shapes and map the ratio back onto the
+	//                  (pt1, pt2) bins. One weight per pT-bin separation d, so
+	//                  the prior moves in xJ without chasing the per-bin
+	//                  statistics of the unfolded data, and the pt1 spectrum is
+	//                  left alone.
+	//   kBlendPerBin - the original per-(pt1, pt2)-bin blend. Hits the flat
+	//                  target exactly, but at fraction 1 it puts weights of up
+	//                  to 23x on corner bins with a few hundred raw counts.
+	const int prior_blend_space = prior_qa::kBlendPerBin;
+	// Nominal Bayesian-iteration index (0-indexed) -> N_iter = 2. The iteration
+	// scan minimises the quadrature sum of sigma_sim, sigma_data and
+	// sigma_bin-by-bin (see makeIterationPlot_AA.C); using absolute changes, as
+	// the AA note specifies, that minimum is N_iter = 2 for every centrality.
+	const int prior_iteration = 1;
+
+	const bool not_a_closure_test = (full_or_half == 0);
+	const bool half_closure  = (full_or_half == 1);
+	const bool full_closure  = (full_or_half == 2);
+	std::cout << "not_a_closure_test = " << not_a_closure_test << std::endl;
+	std::cout << "half_closure = " << half_closure << std::endl;
+	std::cout << "full_closure = " << full_closure << std::endl;
+	const bool NO_PRIMER = (primer == 0);
+	const bool PRIMER1 = (primer == 1);
+	const bool PRIMER2 = (primer == 2);
+	std::cout << "PRIMER1 = " << PRIMER1 << std::endl;
+	std::cout << "PRIMER2 = " << PRIMER2 << std::endl;
+	std::cout << "NO_PRIMER = " << NO_PRIMER << std::endl;
 	read_binning rb(configfile.c_str());
 
-	std::string system_string = (ispp ? "pp" : "AA_cent_" + std::to_string(centrality_bin));
+	std::string system_string = rb.get_system_string(centrality_bin);
+	std::cout << "System string: " << system_string << std::endl;
+	
 	std::string j10_file = std::getenv("TNUPLE_SIM_FILE_JET10");
 	std::string j20_file = std::getenv("TNUPLE_SIM_FILE_JET20");
 	std::string j30_file = std::getenv("TNUPLE_SIM_FILE_JET30");
+	
 	std::cout << "Using matched simulation files:" << std::endl;
 	std::cout << "  Jet10: " << j10_file << std::endl;
 	std::cout << "  Jet20: " << j20_file << std::endl;
 	std::cout << "  Jet30: " << j30_file << std::endl;
-	if (OPTION_A_SETTINGS)
-	{
-		std::cout << "Using OPTION A settings for response matrix creation" << std::endl;
-	}
 
+	float maxptruthr04[3];
 	float maxpttruth[3];
 	float pt1_truth[3];
 	float pt2_truth[3];
@@ -68,15 +95,19 @@ int createResponse_noempty_AA (
 	float match[3];
 	float mbd_vertex[3];
 	float centrality[3];
-	float sumeT[3] = {0, 0, 0};
-
+	float sumeT[3];
+	float psi2[3];
+	float psi3[3];
+	float sublead_flag[3];
+	
 	float n_events[3];
 	float b_n_events = 0;
+	float n_dijets[3] =0;
+	float b_n_dijets = 0;
+
 	float event_weight[3] = {1, 1, 1};
-	bool has_event_weight[3] = {false, false, false};
-	bool has_sumeT[3] = {false, false, false};
 	
-	TFile *fin[3];
+	TFile * fin[3];
 	fin[0] = new TFile(j10_file.c_str(), "r");
 	fin[1] = new TFile(j20_file.c_str(), "r");
 	fin[2] = new TFile(j30_file.c_str(), "r");
@@ -96,6 +127,7 @@ int createResponse_noempty_AA (
 			return 1;
 		}
 
+		tn[i]->SetBranchAddress("maxptruthr04", &maxptruthr04[i]);
 		tn[i]->SetBranchAddress("maxpttruth", &maxpttruth[i]);
 		tn[i]->SetBranchAddress("pt1_truth", &pt1_truth[i]);
 		tn[i]->SetBranchAddress("pt2_truth", &pt2_truth[i]);
@@ -107,13 +139,11 @@ int createResponse_noempty_AA (
 		tn[i]->SetBranchAddress("matched", &match[i]);
 		tn[i]->SetBranchAddress("mbd_vertex", &mbd_vertex[i]);
 		tn[i]->SetBranchAddress("centrality", &centrality[i]);
-		has_sumeT[i] = tn[i]->GetBranch("sumeT") != nullptr;
-		if (has_sumeT[i]) tn[i]->SetBranchAddress("sumeT", &sumeT[i]);
-		else if (!ispp) std::cerr << "Warning: missing sumeT in " << fin[i]->GetName() << "; sumeT reweighting is disabled for this sample." << std::endl;
+		tn[i]->SetBranchAddress("sumeT", &sumeT[i]);
+		tn[i]->SetBranchAddress("psi2", &psi2[i]);
+		tn[i]->SetBranchAddress("psi3", &psi3[i]);
+		tn[i]->SetBranchAddress("sublead_flag", &sublead_flag[i]);
 		
-		has_event_weight[i] = tn[i]->GetBranch("weight") != nullptr;
-		if (has_event_weight[i]) tn[i]->SetBranchAddress("weight", &event_weight[i]);
-
 		TNtuple *tn_stats = (TNtuple*) fin[i]->Get("tn_stats");
 		if (!tn_stats)
 		{
@@ -121,210 +151,235 @@ int createResponse_noempty_AA (
 			return 1;
 		}
 		tn_stats->SetBranchAddress("nevents", &b_n_events);
+		tn_stats->SetBranchAddress("ndijets", &b_n_dijets);
 		tn_stats->GetEntry(0);
 		n_events[i] = b_n_events;
+		n_dijets[i] = b_n_dijets;
 
 	}
-		
-	// float cs_10 = (2.889e-6);
-	// float cs_20 = 5.4067742e-8;
-	// float cs_30 = (2.505e-9);
-	float cs_10 = 0.000003997;
-  	float cs_20 = 6.218e-8;
-  	float cs_30 = 2.505e-9;
+	std::cout << "n_events: " << n_events[0] << " " << n_events[1] << " " << n_events[2] << std::endl;
+	std::cout << "event_weight: " << event_weight[0] << " " << event_weight[1] << " " << event_weight[2] << std::endl;
+	
+	const float cs_10 = 0.000003997;
+  	const float cs_20 = 6.218e-8;
+  	const float cs_30 = 2.505e-9;
   
 	float scale_factor[3];
 	scale_factor[0] = (n_events[2]/n_events[0]) * cs_10/cs_30;
 	scale_factor[1] = (n_events[2]/n_events[1]) * cs_20/cs_30; 
-	scale_factor[2] = 1;
+	scale_factor[2] = 1.0;
+	std::cout << "Scale factors: " << scale_factor[0] << " " << scale_factor[1] << " " << scale_factor[2] << std::endl;
 
-	Int_t minentries = rb.get_minentries();
-	Int_t read_nbins = rb.get_nbins();
-	//Int_t primer = rb.get_primer();
+	const int minentries = rb.get_minentries();
+	const int minentries_truth = rb.get_minentries_truth();
+	const int minentries_link = rb.get_minentries_link();
+	std::cout << "Minimum entries: " << minentries
+			  << "  (truth-side: " << minentries_truth
+			  << ", truth-reco link: " << minentries_link << ")" << std::endl;
 
-	Double_t dphicut = rb.get_dphicut();
-	Double_t dphicuttruth = dphicut;//TMath::Pi()/2.;
-
-	TF1 *fgaus = new TF1("fgaus", "gaus");
-	fgaus->SetRange(-0.5, 0.5);
-	Int_t zyam_sys = rb.get_zyam_sys();
-	Double_t flow_v22_scale = rb.get_flow_sys();
-	Double_t flow_v33_scale = rb.get_flow_v33_sys();
-	const bool flow_sys = std::fabs(flow_v22_scale - 1.0) > 1e-6 || std::fabs(flow_v33_scale - 1.0) > 1e-6;
-	Int_t inclusive_sys = rb.get_inclusive_sys();
-	Double_t JES_sys = rb.get_jes_sys();
-	Double_t JER_sys = rb.get_jer_sys();
-	Int_t prior_sys = rb.get_prior_sys();
-	int using_sys = 0;
-
-	TF1 *f_smear = nullptr;
-	if (!ispp)
+	const int nbins = rb.get_nbins();
+	float ipt_bins[nbins+1];
+	float ixj_bins[nbins+1];
+	rb.get_pt_bins(ipt_bins);
+	rb.get_xj_bins(ixj_bins);
+	std::cout << "Pt bins -- Xj bins: " << std::endl;
+	for (int i = 0 ; i < nbins + 1; i++)
 	{
-		f_smear  = (TF1*) rb.get_smear_function(centrality_bin);
-		if (!f_smear)
-		{
-			std::cout << " NO SMEAR " << std::endl;
-			exit(-1);
-		}
+		std::cout << ipt_bins[i] << " -- " << ixj_bins[i] << std::endl;
 	}
+
+	const int centrality_bins = rb.get_number_centrality_bins();
+	float icentrality_bins[centrality_bins + 1];
+	rb.get_centrality_bins(icentrality_bins);
+	std::cout << "Centrality bins: " << std::endl;
+	for (int i = 0 ; i < centrality_bins + 1; i++)
+	{
+		std::cout << icentrality_bins[i] << std::endl;
+	}
+
+	const int max_reco_bin = rb.get_maximum_reco_bin();
+	std::cout << "Max reco bin: " << max_reco_bin << std::endl;
+
+	const double dphicut = rb.get_dphicut();
+	const double dphicuttruth = dphicut;
+	std::cout << "dphicut: " << dphicut << std::endl;
+	std::cout << "dphicuttruth: " << dphicuttruth << std::endl;
+
+	const float truth_leading_cut = rb.get_truth_leading_cut();
+	const float truth_subleading_cut = rb.get_truth_subleading_cut();
+	std::cout << "Truth leading cut: " << truth_leading_cut << std::endl;
+	std::cout << "Truth subleading cut: " << truth_subleading_cut << std::endl;
+
+	const float reco_leading_cut = rb.get_reco_leading_cut();
+	const float reco_subleading_cut = rb.get_reco_subleading_cut();
+	std::cout << "Reco leading cut: " << reco_leading_cut << std::endl;
+	std::cout << "Reco subleading cut: " << reco_subleading_cut << std::endl;
+
+	const float measure_leading_cut = rb.get_measure_leading_cut();
+	const float measure_subleading_cut = rb.get_measure_subleading_cut();
+	std::cout << "Measure leading cut: " << measure_leading_cut << std::endl;
+	std::cout << "Measure subleading cut: " << measure_subleading_cut << std::endl;
+
+	const int measure_leading_bin = rb.get_measure_leading_bin();
+	const int measure_subleading_bin = rb.get_measure_subleading_bin();
+	std::cout << "Measure leading bin: " << measure_leading_bin << std::endl;
+	std::cout << "Measure subleading bin: " << measure_subleading_bin << std::endl;
+
+	float sample_boundary[4] = {0};
+	std::cout << "Sample boundaries: " << std::endl;
+	for (int ib = 0; ib < 4; ib++)
+	{
+		sample_boundary[ib] = rb.get_sample_boundary(ib);
+		std::cout <<  sample_boundary[ib] << std::endl;
+	}
+
+	
+	const double flow_v22_scale = rb.get_flow_sys();
+	const double flow_v33_scale = rb.get_flow_v33_sys();
+	const bool flow_sys = std::fabs(flow_v22_scale - 1.0) > 1e-6 || std::fabs(flow_v33_scale - 1.0) > 1e-6;
+	
+	const int inclusive_sys = rb.get_inclusive_sys();
+	
+	const double JES_sys = rb.get_jes_sys();
+	const double JER_sys = rb.get_jer_sys();
+
+	const bool prior_sys = rb.get_prior_sys();
+	
+	const bool qq_sys = rb.get_qq_sys();
+	const bool gq_gg_sys = rb.get_gq_gg_sys();
+
+	const bool jet_v2_scale = rb.get_jet_v2_sys();
+	const bool jet_v2_sys = std::fabs(jet_v2_scale - 1.0) > 1e-6;
+
 
 	std::string sys_name = "nominal";
 	std::cout << "JES = " << JES_sys << std::endl;
 	std::cout << "JER = " << JER_sys << std::endl;
-	float width = 0.8 + JER_sys;
-	fgaus->SetParameters(1, 0, width);
+	
+	int using_sys = 0;
 
-	if (prior_sys)
+	auto * f_smear = (TF1*) rb.get_smear_function(centrality_bin);
+	if ( !f_smear )
+	{
+		std::cout << " NO SMEAR " << std::endl;
+		exit(-1);
+	}
+	
+	const double smear_trunc = 0.5;
+	auto smear_random = [&](double pt) -> double
+	{
+		const double sigma = f_smear->Eval(pt);
+		if ( !(sigma > 0) ) { return 0.0; }
+		// P(|x| < trunc) for N(0, sigma), via Phi(trunc/sigma).
+		const double phi_hi = TMath::Freq(smear_trunc / sigma);
+		double u = (1.0 - phi_hi) + gRandom->Rndm() * (2.0 * phi_hi - 1.0);
+		// NormQuantile is only defined on the open interval; sigma << trunc makes
+		// phi_hi round to exactly 1 and u can then reach the endpoints.
+		if ( u <= 0.0 ) { u = std::numeric_limits<double>::epsilon(); }
+		if ( u >= 1.0 ) { u = 1.0 - std::numeric_limits<double>::epsilon(); }
+		return sigma * TMath::NormQuantile(u);
+	};
+
+	if ( prior_sys )
 	{
 		using_sys = 1;
 		sys_name = "PRIOR";
 	}
-	if (zyam_sys)
-	{
-		using_sys = 1;
-		sys_name = "ZYAM";
-	}
-	if (flow_sys)
+	if ( flow_sys )
 	{
 		using_sys = 1;
 		sys_name = rb.get_flow_systematic_name();
 	}
-	if (inclusive_sys)
+	if ( inclusive_sys )
 	{
 		using_sys = 1;
 		sys_name = "INCLUSIVE";
 	}
-	if (JER_sys != 0)
+	if ( JER_sys != 0 )
 	{
 		using_sys = 1;
 		if (JER_sys < 0) sys_name = "negJER";
 		else if (JER_sys > 0) sys_name = "posJER";
 		std::cout << "Calculating JER extra = " << JER_sys  << std::endl;
 	}
-	if (JES_sys != 0)
+	if ( JES_sys != 0 )
 	{
 		using_sys = 1;
 		if (JES_sys < 0) sys_name = "negJES";
 		else if (JES_sys > 0) sys_name = "posJES";
 		std::cout << "Calculating JES extra = " << JES_sys  << std::endl;
 	}
+	if ( jet_v2_sys )
+	{
+		using_sys = 1;
+		sys_name = "JETV2";
+		std::cout << "Calculating JET v2 extra = " << jet_v2_scale  << std::endl;
+	}
+	if ( qq_sys )
+	{
+		using_sys = 1;
+		sys_name = "QQ";
+		std::cout << "Using only qq tagged dijets for response matrix" << std::endl;
+
+	}
+	if ( gq_gg_sys )
+	{
+		using_sys = 1;
+		sys_name = "GQ_GG";
+		std::cout << "Using only gq and gg tagged dijets for response matrix" << std::endl;
+	}
 
   	const std::string diagnostic_name = half_closure ? "HALF_" + sys_name : (full_closure ? "FULL_" + sys_name : sys_name);
 
-	const int nbins = read_nbins;
-
-	float ipt_bins[nbins+1];
-	float ixj_bins[nbins+1];
-
-	rb.get_pt_bins(ipt_bins);
-	rb.get_xj_bins(ixj_bins);
-	for (int i = 0 ; i < nbins + 1; i++)
-	{
-		std::cout << ipt_bins[i] << " -- " << ixj_bins[i] << std::endl;
-	}
-
-	Int_t max_reco_bin = rb.get_maximum_reco_bin();
-
-	const int centrality_bins = rb.get_number_centrality_bins();
-
-	float icentrality_bins[centrality_bins + 1];
-	rb.get_centrality_bins(icentrality_bins);
+	TH1D * h_centrality_reweight = nullptr;
+	TH1D * h_mbd_reweight 		 = nullptr;
+	TH1D * h_sumeT_reweight 	 = nullptr;
 	
-
-	int prior_iteration = 1;
-  
- 	// Vertex Reweight
-	std::vector<std::pair<float, float>> centrality_scales;
-	if (primer != 1 && !full_or_half && !ispp)
+	if ( !PRIMER1 || OVERRIDE_EVENT_WEIGHT )
 	{
-		TFile *fcent = new TFile(Form("centrality/centrality_reweight_%s_r%02d_%s.root", system_string.c_str(), cone_size, sys_name.c_str()),"r");
-		TH1D *h_centrality_reweight = (TH1D*) fcent->Get("h_centrality_reweight");
-		if (!fcent || fcent->IsZombie() || !h_centrality_reweight)
+		std::cout << "Loading centrality, vertex, and sumeT reweighting histograms for " << system_string << " " << sys_name << std::endl;
+		
+		auto * fcent = new TFile(Form("centrality/centrality_reweight_%s_r%02d_%s.root", system_string.c_str(), cone_size, sys_name.c_str()), "READ");
+		if ( !fcent || fcent->IsZombie() )
 		{
-			std::cerr << "Missing required centrality reweight for " << system_string
-						<< " " << sys_name << std::endl;
-			return 1;
-		}
-		for (int ib = 0; ib < h_centrality_reweight->GetNbinsX(); ib++)
-		{
-			centrality_scales.push_back(std::make_pair(h_centrality_reweight->GetBinLowEdge(ib+1) + h_centrality_reweight->GetBinWidth(ib+1), h_centrality_reweight->GetBinContent(ib+1)));
-		}
-	} // cent scaled
-
-	std::vector<std::pair<float, float>> vertex_scales;
-
-	Int_t vtx_sys = rb.get_vtx_sys();
-	if (primer != 1 && !full_or_half)
-	{
-
-		TFile *fvtx = new TFile(Form("vertex/vertex_reweight_%s_r%02d_%s.root", system_string.c_str(), cone_size, sys_name.c_str()),"r");
-		TH1D *h_mbd_reweight = (TH1D*) fvtx->Get("h_mbd_reweight");
-		if (!fvtx || fvtx->IsZombie() || !h_mbd_reweight)
-		{
-			std::cerr << "Missing required vertex reweight for " << system_string
-						<< " " << sys_name << std::endl;
-			return 1;
-		}
-		for (int ib = 0; ib < h_mbd_reweight->GetNbinsX(); ib++)
-		{
-			vertex_scales.push_back(std::make_pair(h_mbd_reweight->GetBinLowEdge(ib+1) + h_mbd_reweight->GetBinWidth(ib+1), h_mbd_reweight->GetBinContent(ib+1)));
-		}
-	} // vtx scaled
-
-	std::vector<std::pair<float, float>> sumeT_scales;
-	if (primer != 1 && !full_or_half && !ispp)
-	{
-		TFile *fsumeT = new TFile(Form("sumeT/sumeT_reweight_%s_r%02d_%s.root", system_string.c_str(), cone_size, sys_name.c_str()),"r");
-		TH1D *h_sumeT_reweight = fsumeT ? (TH1D*) fsumeT->Get("h_sumeT_reweight") : nullptr;
-		if (h_sumeT_reweight)
-		{
-			for (int ib = 0; ib < h_sumeT_reweight->GetNbinsX(); ib++)
-			{
-				sumeT_scales.push_back(std::make_pair(h_sumeT_reweight->GetBinLowEdge(ib+1) + h_sumeT_reweight->GetBinWidth(ib+1), h_sumeT_reweight->GetBinContent(ib+1)));
-			}
+			std::cerr << "Missing required centrality reweight for " << system_string << " " << sys_name << std::endl;
+			if ( !PRIMER1 ) { return 1; }
 		}
 		else
 		{
-			std::cerr << "Missing required sumeT reweight file/hist for " << system_string
-						<< " r0" << cone_size << " " << sys_name
-						<< std::endl;
-			return 1;
+			h_centrality_reweight = (TH1D*) fcent->Get("h_centrality_reweight") -> Clone(Form("h_centrality_reweight_%s_r%02d_%s", system_string.c_str(), cone_size, sys_name.c_str()));
+			h_centrality_reweight -> SetDirectory(0);
+			fcent -> Close();
 		}
-	} // sumeT scaled
-
-	float truth_leading_cut = rb.get_truth_leading_cut();
-	float truth_subleading_cut = rb.get_truth_subleading_cut();
-
-	float reco_leading_cut = rb.get_reco_leading_cut();
-	float reco_subleading_cut = rb.get_reco_subleading_cut();
-
-	float measure_leading_cut = rb.get_measure_leading_cut();
-	float measure_subleading_cut = rb.get_measure_subleading_cut();
 		
-	int truth_leading_bin = rb.get_truth_leading_bin();
-	int truth_subleading_bin = rb.get_truth_subleading_bin();
-
-	int reco_leading_bin = rb.get_reco_leading_bin();
-	int reco_subleading_bin = rb.get_reco_subleading_bin();
-
-	int measure_leading_bin = rb.get_measure_leading_bin();
-	int measure_subleading_bin = rb.get_measure_subleading_bin();
-
-	float sample_boundary[4] = {0};
-	for (int ib = 0; ib < 4; ib++)
-	{
-		sample_boundary[ib] = rb.get_sample_boundary(ib);
-		std::cout <<  sample_boundary[ib] << std::endl;
+		auto * fvtx = new TFile(Form("vertex/vertex_reweight_%s_r%02d_%s.root", system_string.c_str(), cone_size, sys_name.c_str()), "READ");
+		if ( !fvtx || fvtx->IsZombie()  && !PRIMER1 )
+		{
+			std::cerr << "Missing required vertex reweight for " << system_string << " "<< sys_name << std::endl;
+			if ( !PRIMER1 ) { return 1; }
+		}
+		else
+		{
+			h_mbd_reweight = (TH1D*) fvtx->Get("h_mbd_reweight") -> Clone(Form("h_mbd_reweight_%s_r%02d_%s", system_string.c_str(), cone_size, sys_name.c_str()));
+			h_mbd_reweight -> SetDirectory(0);
+			fvtx -> Close();
+		}
+		
+		auto * fsumeT = new TFile(Form("sumeT/sumeT_reweight_%s_r%02d_%s.root", system_string.c_str(), cone_size, sys_name.c_str()), "READ");
+		if ( !fsumeT || fsumeT->IsZombie() && !PRIMER1 )
+		{
+			std::cerr << "Missing required sumeT reweight for " << system_string << " "<< sys_name << std::endl;
+			if ( !PRIMER1 ) { return 1; }
+		}
+		else
+		{
+			h_sumeT_reweight = (TH1D*) fsumeT->Get("h_sumeT_reweight") -> Clone(Form("h_sumeT_reweight_%s_r%02d_%s", system_string.c_str(), cone_size, sys_name.c_str()));
+			h_sumeT_reweight -> SetDirectory(0);
+			fsumeT -> Close();
+		}
 	}
-	std::cout << "Max reco bin: " << max_reco_bin << std::endl;
-	std::cout << "Truth1: " << truth_leading_cut << std::endl;
-	std::cout << "Reco 1: " <<  reco_leading_cut << std::endl;
-	std::cout << "Meas 1: " <<  measure_leading_cut << std::endl;
-	std::cout << "Truth2: " <<  truth_subleading_cut << std::endl;
-	std::cout << "Reco 2: " <<  reco_subleading_cut << std::endl;
-	std::cout << "Meas 2: " <<  measure_subleading_cut << std::endl;
-
-  	TH1D *h_truth_lead_sample[3];
+	
+  	TH1D * h_truth_lead_sample[3];
 	for (int i = 0; i < 3; i++)
 	{
 		h_truth_lead_sample[i] = new TH1D(Form("h_truth_lead_%d", i), " ; Leading Jet p_{T} [GeV]; counts", 100, 0, 100);
@@ -339,9 +394,11 @@ int createResponse_noempty_AA (
 	TH1D *h_match_truth_sublead = new TH1D("h_match_truth_sublead", " ; Subleading Jet p_{T} [GeV]; counts", 100, 0, 100);
 	TH1D *h_match_reco_lead = new TH1D("h_match_reco_lead", " ; Leading Jet p_{T} [GeV]; counts", 100, 0, 100);
 	TH1D *h_match_reco_sublead = new TH1D("h_match_reco_sublead", " ; Subleading Jet p_{T} [GeV]; counts", 100, 0, 100);
+	
 	TH1D *h_centrality = new TH1D("h_centrality", ";Centrality; counts", 20, 0, 100);
 	TH1D *h_mbd_vertex = new TH1D("h_mbd_vertex", ";z_{vtx}; counts", 120, -60, 60);
 	TH1D *h_sumeT = new TH1D("h_sumeT", ";#Sigma E_{T}; counts", 200, 0, 2000);
+	
 	// pure fills
 	TH1D *h_truth_xj = new TH1D("h_truth_xj",";A_{J};1/N", nbins, ixj_bins);
 	TH1D *h_reco_xj = new TH1D("h_reco_xj",";A_{J};1/N", nbins, ixj_bins);
@@ -361,314 +418,308 @@ int createResponse_noempty_AA (
 	TH1D *h_flat_reco_to_response_pt1pt2 = new TH1D("h_reco_flat_to_response_pt1pt2",";p_{T,1, smear} + p_{T,2, smear}", nbins*nbins, 0, nbins*nbins);
 
 	TH2D *h_flat_response_pt1pt2 = new TH2D("h_flat_response_pt1pt2",";p_{T,1, reco} + p_{T,2, reco};p_{T,1, truth} + p_{T,2, truth}", nbins*nbins, 0, nbins*nbins, nbins*nbins, 0, nbins*nbins);
+	// Unweighted response fills, used by the minentries_link truth-bin criterion.
+	TH2D *h_count_flat_response_pt1pt2 = new TH2D("h_count_flat_response_pt1pt2",";p_{T,1, reco} + p_{T,2, reco};p_{T,1, truth} + p_{T,2, truth}", nbins*nbins, 0, nbins*nbins, nbins*nbins, 0, nbins*nbins);
 
-	// For the prior sensitivity
-	TH1D *h_flatreweight_pt1pt2 = new TH1D("h_unfold_flat_pt1pt2",";p_{T,1, smear} + p_{T,2, smear}", nbins*nbins, 0, nbins*nbins);
+	// For the prior sensitivity. The weights themselves are built (and QA'd) by
+	// prior_qa so that testPriorReweight_AA.C exercises the identical code path.
+	prior_qa::weights prior_weights;
+	TH1D * h_flatreweight_pt1pt2 = nullptr;
+	auto * h2_flatreweight_pt1pt2 = new TH2D("h2_flatreweight_pt1pt2",";p_{T,1}^{truth} [GeV]; p_{T,2}^{truth} [GeV] ; Reweight Factor", nbins, ipt_bins, nbins, ipt_bins);
 
-	const double prior_fraction = prior_sys ? 0.5 : 1.0;
+	// Prior-sensitivity configuration.
+	// fraction = 0.0 : keep the Pythia(+HIJING) prior (all weights exactly 1)
+	// fraction = 0.5 : reweight the prior halfway toward the unfolded data
+	// fraction = 1.0 : full data-driven prior reweighting (preliminary p+p style)
+	//
+	// Nominal uses 0.0: every result produced and presented for the Run-24
+	// to 1 (this matches the committed Jul 30 value prior_fraction = 0.0).
+	// Turning the full reweighting on with the quenched Au+Au data produces a
+	// runaway feedback (weights 0.08-1.3) and a nominal far outside the band
+	// of everything reviewed; enabling it is a physics decision, not a bugfix.
+	//
+	// The PRIOR systematic is then |unfold(fraction 0.5) - unfold(fraction 0)|,
+	// i.e. half of the preliminary full-vs-none prior excursion, implementing
+	// the intended "reduce the prior-reweighting systematic by 50%" without
+	// touching the nominal.
+	//
+	// Ternary order matters: the first value applies to the PRIOR-systematic
+	// config (PRIOR: 1), the second to the nominal. It must be 0.5 : 0.0 —
+	// writing 0.0 : 0.5 makes the NOMINAL half-reweighted (central value moves
+	// halfway to the steep solution) and the PRIOR variation unreweighted.
+	const double prior_fraction = prior_sys ? prior_var : prior_norm;
+	std::cout << "Prior fraction: " << prior_fraction << std::endl;
 
-	if (OPTION_A_SETTINGS) // first change
-	{
-		if (!full_or_half && !prior_sys && !primer)
-		{
-			std::cout << "doing prior" << std::endl;
-			TFile *fun = new TFile(Form("unfolding_hists/unfolding_hists_%s_r%02d_PRIMER1_%s.root", system_string.c_str(), cone_size, sys_name.c_str()), "r");
-			TH1D *h_unfold_flat = (TH1D*) fun->Get(Form("h_flat_unfold_pt1pt2_%d", prior_iteration));
-			TFile *ftr = new TFile(Form("response_matrices/response_matrix_%s_r%02d_PRIMER1_%s.root", system_string.c_str(), cone_size, sys_name.c_str()), "r");
-			std::cout << "doing prior" << std::endl;
-			TH1D *h_truth_flat = (TH1D*) ftr->Get("h_truth_flat_pt1pt2");
-			TH2D *h2_flatreweight_pt1pt2 = new TH2D("h2_flatreweight_pt1pt2",";p_{T,1}^{truth} [GeV]; p_{T,2}^{truth} [GeV] ; Reweight Factor", nbins, ipt_bins, nbins, ipt_bins);
-			
-			if (h_unfold_flat->Integral() != 0) h_unfold_flat->Scale(1./h_unfold_flat->Integral());
-			if (h_truth_flat->Integral() != 0)  h_truth_flat->Scale(1./h_truth_flat->Integral());
-			for (int ibin = 0; ibin < nbins*nbins; ibin++)
-			{
-				float v = h_unfold_flat->GetBinContent(ibin+1);
-				float b = h_truth_flat->GetBinContent(ibin+1);
+	// Diagnostic: freeze the prior to the nominal PRIMER1 result so a systematic's
+	// own unfolded data cannot feed back into its response weighting.
+	// std::string prior_source = sys_name;
+	// if (const char *freeze = std::getenv("DIJET_FREEZE_PRIOR"))
+	// {
+	// 	if (std::atoi(freeze) != 0) {prior_source = "nominal";}
+	// }
 
-				float pt1_bin = ibin/nbins;
-				float pt2_bin = ibin%nbins;
-
-				std::cout << "ibin : " << ibin << " : " << v << " / " << b << " = " << v/b << std::endl;
-				int gbin = h2_flatreweight_pt1pt2->GetBin(pt1_bin+1, pt2_bin+1);
-				if (b > 0)
-				{
-					h_flatreweight_pt1pt2->SetBinContent(ibin+1, v/b);
-					h2_flatreweight_pt1pt2->SetBinContent(gbin, v/b);
-				}
-				else
-				{
-					h_flatreweight_pt1pt2->SetBinContent(ibin+1, 1);
-					h2_flatreweight_pt1pt2->SetBinContent(gbin, 0);
-				}
-			}
-
-			TCanvas *cre = new TCanvas("cre","cre", 500, 500);
-			cre->SetLeftMargin(0.1);
-			cre->SetRightMargin(0.19);
-			h2_flatreweight_pt1pt2->GetYaxis()->SetRangeUser(ipt_bins[0], ipt_bins[13]);
-			h2_flatreweight_pt1pt2->GetXaxis()->SetRangeUser(ipt_bins[0], ipt_bins[13]);
-			h2_flatreweight_pt1pt2->Draw("colz");
-			dlutility::DrawSPHENIX(0.2, 0.87);
-			dlutility::drawText("Prior Reweighting Matrix", 0.2, 0.77);
-			dlutility::drawText(Form("%d - %d %%", (int) icentrality_bins[centrality_bin], (int) icentrality_bins[centrality_bin+1]), 0.2, 0.72);
-			cre->Print(Form("%s/unfolding_plots/prior_matrix_%s_r%02d_%s.pdf", rb.get_code_location().c_str(), system_string.c_str(), cone_size, sys_name.c_str()));
-		}
-		// if (!full_or_half && !prior_sys && !primer)
-		// {
-		// 	std::cout << "doing prior" << std::endl;
-		// 	TFile *fun = new TFile(Form("unfolding_hists/unfolding_hists_%s_r%02d_PRIMER1_%s.root", system_string.c_str(), cone_size, sys_name.c_str()), "r");
-		// 	TH1D *h_unfold_flat = (TH1D*) fun->Get(Form("h_flat_unfold_pt1pt2_%d", prior_iteration));
-		// 	TFile *ftr = new TFile(Form("response_matrices/response_matrix_%s_r%02d_PRIMER1_%s.root", system_string.c_str(), cone_size, sys_name.c_str()), "r");
-		// 	TH1D *h_truth_flat = (TH1D*) ftr->Get("h_truth_flat_pt1pt2");
-
-		// 	TH2D *h2_flatreweight_pt1pt2 = new TH2D("h2_flatreweight_pt1pt2",";p_{T,1}^{truth} [GeV]; p_{T,2}^{truth} [GeV] ; Reweight Factor", nbins, ipt_bins, nbins, ipt_bins);
-			
-		// 	if (h_unfold_flat->Integral() != 0) h_unfold_flat->Scale(1./h_unfold_flat->Integral());
-		// 	if (h_truth_flat->Integral() != 0)  h_truth_flat->Scale(1./h_truth_flat->Integral());
-			
-		// 	// get the halfway point between each bin 
-		// 	TH1D * h_unfold_flat_half = (TH1D*) h_unfold_flat->Clone("h_unfold_flat_half");
-		// 	for (int ibin = 0; ibin < nbins*nbins; ibin++)
-		// 	{
-		// 		float v = h_unfold_flat->GetBinContent(ibin+1);
-		// 		float b = h_truth_flat->GetBinContent(ibin+1);
-
-		// 		if (b > 0)
-		// 		{
-		// 			float diff = (v - b) * prior_fraction;
-		// 			h_unfold_flat_half->SetBinContent(ibin+1, b + diff);
-		// 			// h_unfold_flat_half->SetBinContent(ibin+1, 0.5*(v/b + 1));
-		// 		}
-		// 		else
-		// 		{
-		// 			h_unfold_flat_half->SetBinContent(ibin+1, 1);
-		// 		}
-		// 	}
-			
-			
-		// 	for (int ibin = 0; ibin < nbins*nbins; ibin++)
-		// 	{
-		// 		// float v = h_unfold_flat->GetBinContent(ibin+1);
-		// 		float v = h_unfold_flat_half->GetBinContent(ibin+1);
-		// 		float b = h_truth_flat->GetBinContent(ibin+1);
-
-		// 		float pt1_bin = ibin/nbins;
-		// 		float pt2_bin = ibin%nbins;
-
-		// 		std::cout << "ibin : " << ibin << " : " << v << " / " << b << " = " << v/b << std::endl;
-		// 		int gbin = h2_flatreweight_pt1pt2->GetBin(pt1_bin+1, pt2_bin+1);
-		// 		if (b > 0)
-		// 		{
-		// 			h_flatreweight_pt1pt2->SetBinContent(ibin+1, v/b);
-		// 			h2_flatreweight_pt1pt2->SetBinContent(gbin, v/b);
-		// 		}
-		// 		else
-		// 		{
-		// 			h_flatreweight_pt1pt2->SetBinContent(ibin+1, 1);
-		// 			h2_flatreweight_pt1pt2->SetBinContent(gbin, 0);
-		// 		}
-		// 	}
-
-		// 	TCanvas *cre = new TCanvas("cre","cre", 500, 500);
-		// 	cre->SetLeftMargin(0.1);
-		// 	cre->SetRightMargin(0.19);
-		// 	h2_flatreweight_pt1pt2->GetYaxis()->SetRangeUser(ipt_bins[0], ipt_bins[13]);
-		// 	h2_flatreweight_pt1pt2->GetXaxis()->SetRangeUser(ipt_bins[0], ipt_bins[13]);
-		// 	h2_flatreweight_pt1pt2->Draw("colz");
-		// 	dlutility::DrawSPHENIX(0.2, 0.87);
-		// 	dlutility::drawText("Prior Reweighting Matrix", 0.2, 0.77);
-		// 	dlutility::drawText(Form("%d - %d %%", (int) icentrality_bins[centrality_bin], (int) icentrality_bins[centrality_bin+1]), 0.2, 0.72);
-		// 	cre->Print(Form("%s/unfolding_plots/prior_matrix_%s_r%02d_%s.pdf", rb.get_code_location().c_str(), system_string.c_str(), cone_size, sys_name.c_str()));
-		
-		// 	cre->Clear();
-		// 	h_unfold_flat->Draw();
-		// 	h_truth_flat->Draw("same");
-		// 	h_unfold_flat_half->Draw("same");
-		// 	dlutility::DrawSPHENIX(0.2, 0.87);
-		// 	dlutility::drawText("Prior Reweighting Matrix", 0.2, 0.77);
-		// 	dlutility::drawText(Form("%d - %d %%", (int) icentrality_bins[centrality_bin], (int) icentrality_bins[centrality_bin+1]), 0.2, 0.72);
-		// 	cre->Print(Form("%s/unfolding_plots/prior_flat_%s_r%02d_%s.pdf", rb.get_code_location().c_str(), system_string.c_str(), cone_size, sys_name.c_str()));
-		// 	cre->Clear();
-		// }
-	}
-	else
-	{
-		// Prior systematic: compare the nominal full correction with no correction.
-		// const double prior_fraction = prior_sys ? 0.5 : 0.0;
-		if (!full_or_half && !primer)
-		{
-			std::cout << "Building prior reweight matrix with fraction " << prior_fraction << std::endl;
-
-			TFile *fun = new TFile( Form("unfolding_hists/unfolding_hists_%s_r%02d_PRIMER1_%s.root", system_string.c_str(), cone_size, sys_name.c_str()), "r");
-			TFile *ftr = new TFile( Form("response_matrices/response_matrix_%s_r%02d_PRIMER1_%s.root", system_string.c_str(), cone_size, sys_name.c_str()), "r");
-
-			TH1D *h_unfold_flat = fun ? static_cast<TH1D*>(fun->Get( Form("h_flat_unfold_pt1pt2_%d", prior_iteration))) : nullptr;
-			// Keep the same denominator as OPTION_A_SETTINGS so that f=0 is
-			// an exact reproduction of the established prior variation.
-			TH1D *h_truth_flat = ftr  ? static_cast<TH1D*>(ftr->Get("h_truth_flat_to_response_pt1pt2")) : nullptr;
-			// TH1D *h_truth_flat = ftr  ? static_cast<TH1D*>(ftr->Get("h_truth_flat_pt1pt2")) : nullptr;
-
-			if (!h_unfold_flat || !h_truth_flat)
-			{
-				std::cerr << "Missing PRIMER1 inputs for prior reweighting"	<< std::endl;
-				return 1;
-			}
-
-			TH2D *h2_flatreweight_pt1pt2 = new TH2D( "h2_flatreweight_pt1pt2", ";p_{T,1}^{truth} [GeV];p_{T,2}^{truth} [GeV];Reweight Factor", nbins, ipt_bins, nbins, ipt_bins);
-
-			const double unfold_integral = h_unfold_flat->Integral();
-			const double truth_integral = h_truth_flat->Integral();
-
-			// for (int ibin = 0; ibin < nbins * nbins; ++ibin)
-			// {
-			// 	double w_full = 1.0;
-
-			// 	if (truth_integral > 0.0 && unfold_integral > 0.0)
-			// 	{
-			// 		const double v = h_unfold_flat->GetBinContent(ibin + 1)	/ unfold_integral;
-			// 		const double b = h_truth_flat->GetBinContent(ibin + 1) / truth_integral;
-
-			// 		if (b > 0.0) w_full = v / b;
-			// 	}
-
-			// 	// f=0 -> no reweight; f=1 -> full nominal reweight.
-			// 	const double w_partial = 1.0 + prior_fraction * (w_full - 1.0);
-
-			// 	h_flatreweight_pt1pt2->SetBinContent(ibin + 1, w_partial);
-
-			// 	const int pt1_bin = ibin / nbins;
-			// 	const int pt2_bin = ibin % nbins;
-			// 	const int gbin = h2_flatreweight_pt1pt2->GetBin(pt1_bin + 1, pt2_bin + 1);
-			// 	h2_flatreweight_pt1pt2->SetBinContent(gbin, w_partial);
-			// }
-
-			if (h_unfold_flat->Integral() != 0) h_unfold_flat->Scale(1./h_unfold_flat->Integral());
-			if (h_truth_flat->Integral() != 0)  h_truth_flat->Scale(1./h_truth_flat->Integral());
-			for (int ibin = 0; ibin < nbins*nbins; ibin++)
-			{
-				float v = h_unfold_flat->GetBinContent(ibin+1);
-				float b = h_truth_flat->GetBinContent(ibin+1);
-
-				float pt1_bin = ibin/nbins;
-				float pt2_bin = ibin%nbins;
-
-				std::cout << "ibin : " << ibin << " : " << v << " / " << b << " = " << v/b << std::endl;
-				int gbin = h2_flatreweight_pt1pt2->GetBin(pt1_bin+1, pt2_bin+1);
-				if (b > 0)
-				{
-					h_flatreweight_pt1pt2->SetBinContent(ibin+1, v/b);
-					h2_flatreweight_pt1pt2->SetBinContent(gbin, v/b);
-				}
-				else
-				{
-					h_flatreweight_pt1pt2->SetBinContent(ibin+1, 1);
-					h2_flatreweight_pt1pt2->SetBinContent(gbin, 0);
-				}
-			}
-
-			TCanvas *cre = new TCanvas("cre", "cre", 500, 500);
-			cre->SetLeftMargin(0.1);
-			cre->SetRightMargin(0.19);
-			h2_flatreweight_pt1pt2->GetYaxis()->SetRangeUser( ipt_bins[0], ipt_bins[13]);
-			h2_flatreweight_pt1pt2->GetXaxis()->SetRangeUser( ipt_bins[0], ipt_bins[13]);
-			h2_flatreweight_pt1pt2->Draw("colz");
-			dlutility::DrawSPHENIX(0.2, 0.87);
-			dlutility::drawText( Form("Prior Reweighting Matrix (f = %.1f)", prior_fraction), 0.2, 0.77);
-			dlutility::drawText( Form("%d - %d %%", (int)icentrality_bins[centrality_bin], (int)icentrality_bins[centrality_bin + 1]), 0.2, 0.72);
-			cre->Print(Form( "%s/unfolding_plots/prior_matrix_%s_r%02d_%s.pdf", rb.get_code_location().c_str(), system_string.c_str(), cone_size, sys_name.c_str()));
-		}
-	}
-  	int nbin_response = nbins*nbins;
-  
+	
+	const int nbin_response = nbins*nbins;
   	RooUnfoldResponse rooResponse(nbin_response, 0, nbin_response);
 
-	// A fixed seed makes the half-closure train/test assignment reproducible.
-	TRandom rng(314159);
-	int max_matched_entries = 0;
-	if (const char *max_matched_env = std::getenv("DIJET_MAX_MATCHED_EVENTS"))
+	if ( not_a_closure_test && NO_PRIMER )
 	{
-		max_matched_entries = std::atoi(max_matched_env);
-		if (max_matched_entries > 0)
+
+		std::cout << "doing prior" << std::endl;
+
+		auto * fun = new TFile(Form("unfolding_hists/unfolding_hists_%s_r%02d_PRIMER2_%s.root", system_string.c_str(), cone_size, sys_name.c_str()), "READ");
+		if ( !fun || fun->IsZombie() )
 		{
-			std::cout << "Proof/sample mode: limiting each matched simulation sample to "
-			<< max_matched_entries << " entries via DIJET_MAX_MATCHED_EVENTS." << std::endl;
+			std::cerr << "Missing required unfolding histograms for " << system_string << " "<< sys_name << std::endl;
+			return 1;
+		}
+		auto * h_unfold_flat_in = (TH1D*) fun->Get(Form("h_flat_unfold_pt1pt2_%d", prior_iteration)) -> Clone(Form("h_flat_unfold_pt1pt2_%d", prior_iteration));
+		h_unfold_flat_in -> SetDirectory(0);
+		fun -> Close();
+
+		auto * ftr = new TFile(Form("response_matrices/response_matrix_%s_r%02d_PRIMER2_%s.root", system_string.c_str(), cone_size, sys_name.c_str()), "READ");
+		if ( !ftr || ftr->IsZombie() )
+		{
+			std::cerr << "Missing required response matrix for " << system_string << " "<< sys_name << std::endl;
+			return 1;
+		}
+		auto * h_truth_flat_in = (TH1D*) ftr->Get("h_truth_flat_pt1pt2") -> Clone(Form("h_truth_flat_pt1pt2_%d", prior_iteration));
+		h_truth_flat_in -> SetDirectory(0);
+		ftr -> Close();
+
+		// Normalizes both inputs, blends them by prior_fraction and forms the
+		// per-truth-bin weights in ROOT bin k+1. Projection onto xJ is linear, so
+		// prior_weights.target is the same blended target either way -- only the
+		// weights differ.
+		std::cout << "Prior blend space: " << prior_qa::blend_name(prior_blend_space) << std::endl;
+		// One xJ ratio per leading-pT measurement range, so the reweighted prior
+		// reproduces each range's xJ target and not just the inclusive one.
+		std::vector<prior_qa::lead_group> prior_lead_groups;
+		for (int irange = 0; irange < rb.get_measure_bins(); irange++)
+		{
+			prior_lead_groups.push_back({rb.get_measure_region(irange), rb.get_measure_region(irange + 1)});
+		}
+
+		prior_weights = ( prior_blend_space == prior_qa::kBlendXJ )
+			? prior_qa::build_xj(h_truth_flat_in, h_unfold_flat_in, prior_fraction, nbins,
+			                     ipt_bins, ixj_bins, prior_lead_groups,
+			                     measure_subleading_bin, nbins - 2)
+			: prior_qa::build(h_truth_flat_in, h_unfold_flat_in, prior_fraction, nbins);
+		h_flatreweight_pt1pt2 = prior_weights.weight;
+		if ( !h_flatreweight_pt1pt2 )
+		{
+			std::cerr << "Failed to build the prior reweighting." << std::endl;
+			return 1;
+		}
+
+		TH1D * h_truth_flat = prior_weights.truth;
+		TH1D * h_unfold_flat = prior_weights.unfold;
+		TH1D * h_fractional_unfold_flat = prior_weights.target;
+
+		// 2D view of the weights. Flat index k = ibin-1 maps to (k/nbins, k%nbins);
+		// using ibin itself here shifted the whole matrix by one truth bin.
+		for (int ibin = 1; ibin <= nbin_response; ibin++)
+		{
+			const int flat_index = ibin - 1;
+			const int gbin = h2_flatreweight_pt1pt2 -> GetBin( flat_index/nbins + 1, flat_index%nbins + 1 );
+			h2_flatreweight_pt1pt2->SetBinContent( gbin, h_flatreweight_pt1pt2->GetBinContent(ibin) );
+		}
+
+		TCanvas *cre = new TCanvas("cre","cre", 500, 500);
+		cre->SetLeftMargin(0.1);
+		cre->SetRightMargin(0.19);
+		// h2_flatreweight_pt1pt2->GetYaxis()->SetRangeUser(ipt_bins[0], ipt_bins[13]);
+		// h2_flatreweight_pt1pt2->GetXaxis()->SetRangeUser(ipt_bins[0], ipt_bins[13]);
+		h2_flatreweight_pt1pt2->Draw("colz");
+		dlutility::DrawSPHENIX(0.2, 0.87);
+		dlutility::drawText("Prior Reweighting Matrix", 0.2, 0.77);
+		dlutility::drawText(Form("%d - %d %%", (int) icentrality_bins[centrality_bin], (int) icentrality_bins[centrality_bin+1]), 0.2, 0.72);
+		// cre->Print(Form("%s/unfolding_plots/prior_matrix_%s_r%02d_%s.pdf", rb.get_code_location().c_str(), system_string.c_str(), cone_size, sys_name.c_str()));
+		// need a primer and sys and diagnostic name to save the prior matrix
+		cre->Print(Form("%s/unfolding_plots/prior_matrix_%s_r%02d_%s_%s.pdf", rb.get_code_location().c_str(), system_string.c_str(), cone_size, sys_name.c_str(), diagnostic_name.c_str()));
+		// draw 1D truth, unfold, and fractional unfold
+		TCanvas *c1d = new TCanvas("c1d","c1d", 500, 500);
+		c1d->SetLeftMargin(0.1);
+		c1d->SetRightMargin(0.19);
+		gPad->SetLogy(0);
+		h_truth_flat->SetLineColor(kBlack);
+		h_truth_flat->SetLineWidth(2);
+		h_unfold_flat->SetLineColor(kRed);
+		h_unfold_flat->SetLineWidth(2);
+		h_fractional_unfold_flat->SetLineColor(kBlue);
+		h_fractional_unfold_flat->SetLineWidth(2);
+		h_truth_flat->Draw("hist");
+		h_unfold_flat->Draw("hist same");
+		h_fractional_unfold_flat->Draw("hist same");
+		dlutility::DrawSPHENIX(0.2, 0.87);
+		dlutility::drawText("Prior Reweighting", 0.2, 0.77);
+		dlutility::drawText(Form("%d - %d %%", (int) icentrality_bins[centrality_bin], (int) icentrality_bins[centrality_bin+1]), 0.2, 0.72);
+		// c1d->Print(Form("%s/unfolding_plots/prior_1D_%s_r%02d_%s.pdf", rb.get_code_location().c_str(), system_string.c_str(), cone_size, sys_name.c_str()));
+		c1d->Print(Form("%s/unfolding_plots/prior_1D_%s_r%02d_%s_%s.pdf", rb.get_code_location().c_str(), system_string.c_str(), cone_size, sys_name.c_str(), diagnostic_name.c_str()));
+		gPad->SetLogy(0);
+
+		// ---------------------------------------------------------------------
+		// Prior QA: apply the weights to the MC truth exactly as the event loop
+		// below will, and compare the result with the target the reweighting is
+		// supposed to reach. "reweighted / target" must be 1 in every bin; any
+		// structure there is a bug in the reweighting, not physics. The same
+		// three distributions are also projected onto xJ so the effect is visible
+		// in the observable the systematic is actually quoted on.
+		// ---------------------------------------------------------------------
+		{
+			TH1D * h_prior_reweighted_truth = prior_qa::apply(prior_weights.truth, h_flatreweight_pt1pt2,
+			                                                  nbins, "h_prior_reweighted_truth");
+			const std::string qa_label = Form("%s r%02d %s %s blend=%s", system_string.c_str(),
+			                                  cone_size, sys_name.c_str(), diagnostic_name.c_str(),
+			                                  prior_qa::blend_name(prior_blend_space));
+			prior_qa::print_summary(prior_weights, h_prior_reweighted_truth, nbins, qa_label);
+			// The number that matters for kBlendXJ: flat-space closure is not
+			// expected there, xJ closure is.
+			prior_qa::print_xj_summary(prior_weights, h_prior_reweighted_truth, nbins,
+			                           ipt_bins, ixj_bins, measure_leading_bin, nbins - 2,
+			                           measure_subleading_bin, nbins - 2, qa_label);
+
+			const std::string cent_label = Form("%d - %d %%", (int) icentrality_bins[centrality_bin],
+			                                                  (int) icentrality_bins[centrality_bin+1]);
+			const std::vector<std::string> captions = {
+				Form("Prior fraction %.2f", prior_fraction),
+				Form("blended in %s", prior_blend_space == prior_qa::kBlendXJ
+				                      ? "#it{x}_{J}" : "(#it{p}_{T,1}, #it{p}_{T,2})"),
+				cent_label
+			};
+
+			prior_qa::draw_flat(prior_weights, h_prior_reweighted_truth, captions,
+				Form("%s/unfolding_plots/priorQA_flat_%s_r%02d_%s_%s.pdf", rb.get_code_location().c_str(),
+				     system_string.c_str(), cone_size, sys_name.c_str(), diagnostic_name.c_str()));
+
+			const int mbins = rb.get_measure_bins();
+			for (int irange = 0; irange < mbins; irange++)
+			{
+				const int lead_lo = rb.get_measure_region(irange);
+				const int lead_hi = rb.get_measure_region(irange + 1);
+				std::vector<std::string> xj_captions = captions;
+				xj_captions.push_back(Form("%2.1f #leq #it{p}_{T,1} < %2.1f GeV",
+				                           ipt_bins[lead_lo], ipt_bins[lead_hi]));
+				prior_qa::draw_xj(prior_weights, h_prior_reweighted_truth, nbins, ipt_bins, ixj_bins,
+				                  lead_lo, lead_hi, measure_subleading_bin, nbins - 2, xj_captions,
+					Form("%s/unfolding_plots/priorQA_xj_%s_r%02d_%s_%s_range%d.pdf", rb.get_code_location().c_str(),
+					     system_string.c_str(), cone_size, sys_name.c_str(), diagnostic_name.c_str(), irange));
+			}
 		}
 	}
-	
+
+
+	// Fixed seeds: gRandom drives smear_random() — 4357 is ROOT's
+	// TRandom3 default, pinned here so nominal/systematic chains stay event-aligned
+	// (common random numbers) even if ROOT's default changes. rng drives only the
+	// closure-test split; a fixed seed makes closure tests reproducible.
+	gRandom->SetSeed(4357);
+	auto * rng = new TRandom(12345);
   	for (int isample = 0; isample < 3; isample++)
     {
-		std::cout << "Sample " << isample << std::endl;
-		int entries0 = 0;
-		int entries1 = tn[isample]->GetEntries()/2;    
-		int entries2 = tn[isample]->GetEntries();
-		if (max_matched_entries > 0) entries2 = std::min(entries2, max_matched_entries);
-		//if (full_or_half == 1) entries2 = entries1;
-
-		for (int i = entries0; i < entries2; i++)
+		// std::cout << "Sample " << isample << ":" << 
+		const int entries2 = tn[isample]->GetEntries();    
+		for (int i = 0; i < entries2; i++)
 		{
-			tn[isample]->GetEntry(i);
-			int inrecojets = nrecojets[isample];
-			double event_scale = has_event_weight[isample] ? event_weight[isample] : scale_factor[isample];
-
-			if (maxpttruth[isample] < sample_boundary[isample] || maxpttruth[isample] >= sample_boundary[isample+1]) continue;	  
-
-			if (!(ispp) &&  centrality[isample] < icentrality_bins[centrality_bin] || centrality[isample] >= icentrality_bins[centrality_bin+1]) continue;
-			// Vertex Rewieghting
-			bool fill_response = false;
-			if (full_or_half_closure)
+			tn[isample] -> GetEntry(i);
+			if ( i % (entries2/10) == 0 )
 			{
-				if (rng.Uniform() >= 0.5)
-				{
-					fill_response = true;
-				}
+				std::cout << "Sample " << isample << " : " << i << " / " << entries2 << "\r" << std::flush;
+			}
+			
+			int inrecojets = nrecojets[isample];
+			
+			double event_scale 			= scale_factor[isample];
+			double mbd_vertex_scale 	= 1.0;
+			double sumeT_scale 			= 1.0;
+			double centrality_scale 	= 1.0;
+
+			const bool in_maxpttruth_range = ( maxpttruth[isample] >= sample_boundary[isample] && maxpttruth[isample] < sample_boundary[isample+1] );
+			if ( !in_maxpttruth_range ) 
+			{ 
+				continue; 
 			}
 
-			// !(full_or_half && !fill_response) fill unless full_or_half and not fill_response
-			// !(full_or_half && fill_response) fill  unless full_or_half and fill_response
-			const bool use_for_response = !half_closure || fill_response; // fill full closure, or fill r
-			const bool use_for_test = full_closure || (half_closure && !fill_response);
-		
-			// const bool use_for_response = !(full_or_half && !fill_response); // fill full closure, or fill response half closure
-			// const bool use_for_test = !(full_or_half && fill_response); // fill full closure
-
-			if (primer != 1 && !full_or_half)
+			const bool in_centrality_bin = ( centrality[isample] >= icentrality_bins[centrality_bin] && centrality[isample] < icentrality_bins[centrality_bin+1] );
+			if ( !in_centrality_bin && DO_CENT_CUT )
 			{
-				for (int ib = 0; ib < (int)vertex_scales.size(); ib++)
-				{
-					if (mbd_vertex[isample] < vertex_scales.at(ib).first)
-					{
-						event_scale *= vertex_scales.at(ib).second;
-						//if (i < 100) std:cout << "found z = " << vertex_scales.at(ib).first << " " <<vertex_scales.at(ib).second<<std::endl;
-						break;
-					}
-				} //mbd vertex reweighting
+				continue;
+			}
+			
+			// No hard centrality cut on the MC: the response is built from the full
+			// 0-90% embedded sample and the final (non-PRIMER) pass weights each
+			// event by the data/MC z-vertex and SumET ratios for this centrality
+			// bin (AA note Fig. 14/15 procedure). Restricting the MC to the target
+			// window starves the response (~8.5x fewer pairs in 0-10%), which the
+			// minentries trimming then turns into a different unfolding space.
 
-				if (!ispp && has_sumeT[isample] && !sumeT_scales.empty())
-				{
-					for (int ib = 0; ib < (int)sumeT_scales.size(); ib++)
-					{
-						if (sumeT[isample] < sumeT_scales.at(ib).first)
-						{
-							event_scale *= sumeT_scales.at(ib).second;
-							break;
-						}
-					}
-				} // sumeT reweighting
+			// Closure semantics: FULL closure trains on ALL events and unfolds the
+			// same sample (response = test = everything); HALF closure trains on a
+			// random half and unfolds the other half. The previous logic split
+			// 50/50 for both modes, making FULL bit-identical to HALF.
+			const bool accept_prob			= ( rng->Uniform() >= 0.5 );
+			const bool fill_response 		= full_closure || ( half_closure && accept_prob );
+			const bool use_for_response 	= not_a_closure_test || fill_response;
+			const bool use_for_test 		= not_a_closure_test || full_closure || !fill_response;
 
-				if (!ispp && !full_or_half)
+			// !(full_or_half && !fill_response)
+			// !(full_or_half && fill_response)
+			// const bool fill_response = ( !not_a_closure_test && rng->Uniform() >= 0.5 );
+			// const bool u!is_in_centrality_binse_for_response = !half_closure || fill_response; // fill full closure, or fill r
+			// const bool use_for_test = full_closure || (half_closure && !fill_response);
+			// const bool use_for_response = !(!not_a_closure_test && !fill_response); // fill full closure, or fill response half closure
+			// const bool use_for_test = !(!not_a_closure_test && fill_response); // fill full closure // not_a_closure_test || !
+			// if(full_or_half) if ( rng->Uniform() >= 0.5 ) { fill_response = true; }
+
+			if ( !PRIMER1 || OVERRIDE_EVENT_WEIGHT )
+			{
+				const int imbd_bin = h_mbd_reweight -> FindBin( mbd_vertex[isample] );		
+				const int isumeT_bin = h_sumeT_reweight -> FindBin( sumeT[isample] );
+				const int icent_bin = h_centrality_reweight -> FindBin( centrality[isample] );
+
+				if ( imbd_bin > 0 && imbd_bin <= h_mbd_reweight->GetNbinsX() )
 				{
-					for (int ib = 0; ib < (int)centrality_scales.size(); ib++)
-					{
-						if (centrality[isample] < centrality_scales.at(ib).first)
-						{
-							event_scale *= centrality_scales.at(ib).second;
-							//if (i < 100) std:cout << "found z = " << vertex_scales.at(ib).first << " " <<vertex_scales.at(ib).second<<std::endl;
-							break;
-						}
-					}
-				} // centrality reweighting
-			} // end of primer != 1 && !full_or_half
+					mbd_vertex_scale = h_mbd_reweight -> GetBinContent(imbd_bin);
+				}
+				else
+				{
+					continue;
+				}
+
+				if ( isumeT_bin > 0 && isumeT_bin <= h_sumeT_reweight->GetNbinsX() )
+				{
+					sumeT_scale = h_sumeT_reweight -> GetBinContent(isumeT_bin);
+				}
+				else  
+				{
+					if ( !DO_CENT_EVENT_WEIGHT ) continue;
+				}
+
+				if ( icent_bin > 0 && icent_bin <= h_centrality_reweight->GetNbinsX() )
+				{
+					centrality_scale = h_centrality_reweight -> GetBinContent(icent_bin);
+				}
+				else
+				{
+					if ( DO_CENT_EVENT_WEIGHT ) continue;
+				}
+				
+				if ( mbd_vertex_scale < 0 ) { mbd_vertex_scale = 0; }
+				if ( sumeT_scale < 0 ) { sumeT_scale = 0; }
+				if ( centrality_scale < 0 ) { centrality_scale = 0; }
+
+				double this_w = mbd_vertex_scale * sumeT_scale;
+				if ( DO_CENT_EVENT_WEIGHT )
+				{
+					// this_w *= centrality_scale;
+					this_w = centrality_scale * mbd_vertex_scale;
+				}
+
+				if ( not_a_closure_test )
+				{
+					event_scale *= this_w;
+				}
+			}
 
 			float max_truth = 0;
 			float max_reco = 0;
@@ -705,17 +756,10 @@ int createResponse_noempty_AA (
 			double smear1 = 0;
 			double smear2 = 0;
 
-			if (ispp && !full_or_half)
+			if ( not_a_closure_test )
 			{
-				smear1 = fgaus->GetRandom();
-				smear2 = fgaus->GetRandom();
-			}
-			else if (!full_or_half)
-			{
-				fgaus->SetParameter(2, f_smear->Eval(e1));
-				smear1 = fgaus->GetRandom();
-				fgaus->SetParameter(2, f_smear->Eval(e2));
-				smear2 = fgaus->GetRandom();
+				smear1 = smear_random(e1);
+				smear2 = smear_random(e2);
 			}
 		
 			if (JES_sys != 0)
@@ -731,17 +775,16 @@ int createResponse_noempty_AA (
 		
 			float maxi = std::max(es1, es2);
 			float mini = std::min(es1, es2);
-
 			float maxit = std::max(e1, e2);
 			float minit = std::min(e1, e2);
 
-			if (maxi >= ipt_bins[max_reco_bin]) continue;
+			if (maxi >= ipt_bins[max_reco_bin]){ continue; }
 
-			if (maxit > truth_leading_cut) h_truth_lead->Fill(e1, event_scale);
-			if (minit >  truth_subleading_cut) h_truth_sublead->Fill(e2, event_scale);
+			if (maxit > truth_leading_cut){ h_truth_lead->Fill(e1, event_scale);}
+			if (minit >  truth_subleading_cut){ h_truth_sublead->Fill(e2, event_scale);}
 
-			if (maxi >  reco_leading_cut) h_reco_lead->Fill(maxi, event_scale);
-			if (mini >  reco_subleading_cut) h_reco_sublead->Fill(mini, event_scale);
+			if (maxi >  reco_leading_cut){ h_reco_lead->Fill(maxi, event_scale);}
+			if (mini >  reco_subleading_cut){ h_reco_sublead->Fill(mini, event_scale);}
 
 
 			for (int ib = 0; ib < nbins; ib++)
@@ -764,58 +807,58 @@ int createResponse_noempty_AA (
 				}
 			}
 		
-			bool truth_good = (maxit >= sample_boundary[1]/* truth_leading_cut*/ && minit >= truth_subleading_cut && dphi_truth[isample] >= dphicuttruth);
+			// const bool truth_good = (maxit >= sample_boundary[1]/* truth_leading_cut*/ && minit >= truth_subleading_cut && dphi_truth[isample] >= dphicuttruth);
+			const bool truth_good = (maxit >= truth_leading_cut && minit >= truth_subleading_cut && dphi_truth[isample] >= dphicuttruth);
+			const bool reco_good = (maxi >= reco_leading_cut && mini >= reco_subleading_cut && dphi_reco[isample] >= dphicut);
 
-			bool reco_good = (maxi >= reco_leading_cut && mini >= reco_subleading_cut && dphi_reco[isample] >= dphicut);
+			const bool skip_pair = !truth_good && !reco_good;
+			const bool miss_pair = truth_good && !reco_good;
+			const bool fake_pair = !truth_good && reco_good && false; // dont do fakes
+			const bool real_pair = truth_good && reco_good && match[isample];
+			const bool missed_real_pair = truth_good && reco_good && !match[isample] && false; // dont do missed real pairs
 
-			if (!truth_good && !reco_good) continue;
-
-			if (OPTION_A_SETTINGS) // second change.
+			if ( skip_pair )
 			{
-				if (!prior_sys && !primer && !full_or_half)
-				{
-					int recorrectbin = pt1_truth_bin*nbins + pt2_truth_bin;	      
-					event_scale *= h_flatreweight_pt1pt2->GetBinContent(recorrectbin);
-				}
+				continue;
 			}
-			else 
-			{
-				if (!primer && !full_or_half)
-				{
-					const int recorrectbin = pt1_truth_bin * nbins + pt2_truth_bin;
-					if (rng.Uniform() <= prior_fraction)
-					{
-						event_scale *= h_flatreweight_pt1pt2->GetBinContent(recorrectbin);
-					}
-					// event_scale *= h_flatreweight_pt1pt2->GetBinContent(recorrectbin);
-				}
-			}
-			//RooUnfoldResponse rooResponse_histo(*h_flat_reco_to_response_pt1pt2, *h_flat_truth_to_response, *flat_response_pt1pt2);
 
-			if (truth_good && !reco_good)
+			// Prior reweighting must come after the ipt_bins loop above so that
+			// pt1_truth_bin/pt2_truth_bin hold real bin indices (same ordering as version0).
+			// prior_qa::weight_bin() owns the flat-index-to-ROOT-bin convention and is
+			// the same call the QA above uses, so the plots cannot silently disagree
+			// with what is applied here. It returns k+1 for flat index
+			// k = pt1_bin*nbins + pt2_bin: reading GetBinContent(k) — as version0 also
+			// did — returns the weight of the NEIGHBORING truth bin (pt2-1), an
+			// off-by-one that leaves the fraction-0 nominal untouched (all weights are
+			// 1) but distorts every reweighted prior it is used for.
+
+			if ( not_a_closure_test && NO_PRIMER )
+			{
+				const int prior_weight_bin = prior_qa::weight_bin(pt1_truth_bin, pt2_truth_bin, nbins);
+				double flat_scale = h_flatreweight_pt1pt2->GetBinContent( prior_weight_bin );
+				if ( !(flat_scale >= 0) )
+				{
+					std::cerr << "Warning: prior reweighting factor is negative or NaN for truth bins ("
+					          << pt1_truth_bin << ", " << pt2_truth_bin << ")" << std::endl;
+					flat_scale = 1.0;
+				}
+				event_scale *= flat_scale;
+			}
+
+
+			if ( miss_pair )
 			{
 				if (use_for_response)
 				{
 					h_flat_truth_to_response_pt1pt2->Fill(pt1_truth_bin + nbins*pt2_truth_bin, event_scale);
 					h_flat_truth_to_response_pt1pt2->Fill(pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
+					
 					h_count_flat_truth_pt1pt2->Fill(pt1_truth_bin + nbins*pt2_truth_bin);
 					h_count_flat_truth_pt1pt2->Fill(pt2_truth_bin + nbins*pt1_truth_bin);
 
 					rooResponse.Miss(pt1_truth_bin + nbins*pt2_truth_bin, event_scale);
 					rooResponse.Miss(pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
 				}
-
-				// if (!(full_or_half && !fill_response))
-				// {
-				// 	h_flat_truth_to_response_pt1pt2->Fill(pt1_truth_bin + nbins*pt2_truth_bin, event_scale);
-				// 	h_flat_truth_to_response_pt1pt2->Fill(pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
-				// 	h_count_flat_truth_pt1pt2->Fill(pt1_truth_bin + nbins*pt2_truth_bin);
-				// 	h_count_flat_truth_pt1pt2->Fill(pt2_truth_bin + nbins*pt1_truth_bin);
-
-				// 	rooResponse.Miss(pt1_truth_bin + nbins*pt2_truth_bin, event_scale);
-				// 	rooResponse.Miss(pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
-
-				// }
 
 				if (use_for_test)
 				{
@@ -824,54 +867,56 @@ int createResponse_noempty_AA (
 						h_truth_xj->Fill(minit/maxit, event_scale);
 						h_linear_truth_xj->Fill(minit/maxit, event_scale);
 					}
+					
 					h_flat_truth_pt1pt2->Fill(pt1_truth_bin + nbins*pt2_truth_bin, event_scale);
 					h_flat_truth_pt1pt2->Fill(pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
+					
 					h_e1e2->Fill(e1, e2, event_scale);
 					h_e1e2->Fill(e2, e1, event_scale);
 				}
-
-				// if (!(full_or_half && fill_response))
-				// {
-				// 	if (minit >= measure_subleading_cut && maxit >= measure_leading_cut && maxit < ipt_bins[measure_leading_bin + 2])
-				// 	{
-				// 		h_truth_xj->Fill(minit/maxit, event_scale);
-				// 		h_linear_truth_xj->Fill(minit/maxit, event_scale);
-				// 	}
-				// 	h_flat_truth_pt1pt2->Fill(pt1_truth_bin + nbins*pt2_truth_bin, event_scale);
-				// 	h_flat_truth_pt1pt2->Fill(pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
-				// 	h_e1e2->Fill(e1, e2, event_scale);
-				// 	h_e1e2->Fill(e2, e1, event_scale);
-
-				// }
-				continue;
-			} // end of truth_good && !reco_good
-		
-			// if (!truth_good && reco_good)
-			//   {
-			//     h_pt1pt2->Fill(es1, es2, event_scale);
-			//     h_pt1pt2->Fill(es2, es1, event_scale);
+			}
 			
-			//     h_flat_reco_pt1pt2->Fill(pt1_reco_bin + nbins*pt2_reco_bin, event_scale);
-			//     h_flat_reco_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin, event_scale);
-			//     if (maxi >= measure_leading_cut && mini>= measure_subleading_cut)
-			// 	{
-			// 	  h_reco_xj->Fill(mini/maxi, event_scale);
-			// 	  h_linear_reco_xj->Fill(mini/maxi, event_scale);
-			// 	}
-			//     h_flat_reco_to_response_pt1pt2->Fill(pt1_reco_bin + nbins*pt2_reco_bin, event_scale);
-			//     h_flat_reco_to_response_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin, event_scale);
-			//     rooResponse.Fake(pt1_reco_bin + nbins*pt2_reco_bin, event_scale);
-			//     rooResponse.Fake(pt2_reco_bin + nbins*pt1_reco_bin, event_scale);
-			//     continue;
-			//   }
-			
-			if (match[isample] && reco_good && truth_good)
+			if ( fake_pair) 
 			{
 			
-				if (maxit > truth_leading_cut) h_match_truth_lead->Fill(maxit, event_scale);
-				if (minit >  truth_subleading_cut) h_match_truth_sublead->Fill(minit, event_scale);
-				if (maxi >  reco_leading_cut) h_match_reco_lead->Fill(maxi, event_scale);
-				if (mini >  reco_subleading_cut) h_match_reco_sublead->Fill(mini, event_scale);
+				if (use_for_response)
+				{
+					h_flat_reco_to_response_pt1pt2->Fill(pt1_reco_bin + nbins*pt2_reco_bin, event_scale);
+					h_flat_reco_to_response_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin, event_scale);
+					
+					h_count_flat_reco_pt1pt2->Fill(pt1_reco_bin + nbins*pt2_reco_bin);
+					h_count_flat_reco_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin);
+					
+					rooResponse.Fake(pt1_reco_bin + nbins*pt2_reco_bin, event_scale);
+					rooResponse.Fake(pt2_reco_bin + nbins*pt1_reco_bin, event_scale);
+				}
+
+				if (use_for_test)
+				{
+
+					h_pt1pt2->Fill(es1, es2, event_scale);
+					h_pt1pt2->Fill(es2, es1, event_scale);
+
+					if (maxi >= measure_leading_cut && mini>= measure_subleading_cut)
+					{
+						h_reco_xj->Fill(mini/maxi, event_scale);
+						h_linear_reco_xj->Fill(mini/maxi, event_scale);
+					}
+					h_flat_reco_pt1pt2->Fill(pt1_reco_bin + nbins*pt2_reco_bin, event_scale);
+					h_flat_reco_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin, event_scale);
+					
+					// h_e1e2->Fill(es1, es2, event_scale);
+					// h_e1e2->Fill(es2, es1, event_scale);
+				}
+			}
+			
+			if ( real_pair )
+			{
+			
+				if (maxit > truth_leading_cut) { h_match_truth_lead->Fill(maxit, event_scale); }
+				if (minit > truth_subleading_cut) { h_match_truth_sublead->Fill(minit, event_scale);}
+				if (maxi >  reco_leading_cut){ h_match_reco_lead->Fill(maxi, event_scale);}
+				if (mini >  reco_subleading_cut) { h_match_reco_sublead->Fill(mini, event_scale);}
 				
 			
 				if (use_for_response)
@@ -885,11 +930,76 @@ int createResponse_noempty_AA (
 					h_flat_response_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin, pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
 					rooResponse.Fill(pt1_reco_bin + nbins*pt2_reco_bin,pt1_truth_bin + nbins*pt2_truth_bin, event_scale);
 					rooResponse.Fill(pt2_reco_bin + nbins*pt1_reco_bin,pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
+					h_count_flat_response_pt1pt2->Fill(pt1_reco_bin + nbins*pt2_reco_bin, pt1_truth_bin + nbins*pt2_truth_bin);
+					h_count_flat_response_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin, pt2_truth_bin + nbins*pt1_truth_bin);
 					h_count_flat_truth_pt1pt2->Fill(pt1_truth_bin + nbins*pt2_truth_bin);
 					h_count_flat_truth_pt1pt2->Fill(pt2_truth_bin + nbins*pt1_truth_bin);
 					h_count_flat_reco_pt1pt2->Fill(pt1_reco_bin + nbins*pt2_reco_bin);
-					h_count_flat_reco_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin);	      
+					h_count_flat_reco_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin);
+
+				}
+				// Independent of the response fill (version0 convention): the test/prior
+				// truth distribution must contain ALL truth-good pairs, not only misses.
+				// With an else-if here the nominal (both flags true) never adds matched
+				// pairs to h_flat_truth_pt1pt2, so the prior reweighting divides the
+				// unfolded data by a misses-only truth and the FULL closure compares
+				// against an incomplete truth reference.
+				if (use_for_test)
+				{
+					if (minit >= measure_subleading_cut && maxit >= measure_leading_cut && maxit < ipt_bins[measure_leading_bin + 2])
+					{
+						h_truth_xj->Fill(minit/maxit, event_scale);
+						h_linear_truth_xj->Fill(minit/maxit, event_scale);
+					}
+					h_pt1pt2->Fill(es1, es2, event_scale);
+					h_pt1pt2->Fill(es2, es1, event_scale);
+					h_e1e2->Fill(e1, e2, event_scale);
+					h_e1e2->Fill(e2, e1, event_scale);
+
+					h_flat_truth_pt1pt2->Fill(pt1_truth_bin + nbins*pt2_truth_bin, event_scale);
+					h_flat_truth_pt1pt2->Fill(pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
+				}
+
+				// Reco spectrum of matched pairs: filled whenever the pair is usable as a
+				// "measured" distribution (nominal: every real pair; closure: test half only).
+				// Keeping this outside the use_for_response/use_for_test else-if matches the
+				// version0 reference (h_reco_flat entries = 2 per real pair).
+				if (use_for_test)
+				{
+					h_flat_reco_pt1pt2->Fill(pt1_reco_bin + nbins*pt2_reco_bin, event_scale);
+					h_flat_reco_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin, event_scale);
+				}
+
+				if (maxi >= measure_leading_cut && mini>= measure_subleading_cut)
+				{
+					h_reco_xj->Fill(mini/maxi, event_scale);
+					h_linear_reco_xj->Fill(mini/maxi, event_scale);
+				}
+
+				h_mbd_vertex->Fill(mbd_vertex[isample], event_scale);
+				h_sumeT->Fill(sumeT[isample], event_scale);
+				h_centrality->Fill(centrality[isample], event_scale);
 				
+			}
+			
+			if ( missed_real_pair )
+			{
+				if (use_for_response)
+				{
+					h_flat_reco_to_response_pt1pt2->Fill(pt1_reco_bin + nbins*pt2_reco_bin, event_scale);
+					h_flat_reco_to_response_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin, event_scale);
+					
+					h_count_flat_reco_pt1pt2->Fill(pt1_reco_bin + nbins*pt2_reco_bin);
+					h_count_flat_reco_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin);
+
+					h_flat_truth_to_response_pt1pt2->Fill(pt1_truth_bin + nbins*pt2_truth_bin, event_scale);
+					h_flat_truth_to_response_pt1pt2->Fill(pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
+
+					h_count_flat_truth_pt1pt2->Fill(pt1_truth_bin + nbins*pt2_truth_bin);
+					h_count_flat_truth_pt1pt2->Fill(pt2_truth_bin + nbins*pt1_truth_bin);
+
+					rooResponse.Miss(pt1_reco_bin + nbins*pt2_reco_bin, event_scale);
+					rooResponse.Miss(pt2_reco_bin + nbins*pt1_reco_bin, event_scale);
 				}
 				else if (use_for_test)
 				{
@@ -909,93 +1019,23 @@ int createResponse_noempty_AA (
 					h_flat_reco_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin, event_scale);
 				}
 
-				// if (!(full_or_half && !fill_response))
-				// {
-				
-				// 	h_flat_reco_to_response_pt1pt2->Fill(pt1_reco_bin + nbins*pt2_reco_bin, event_scale);
-				// 	h_flat_reco_to_response_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin, event_scale);
-				// 	h_flat_truth_to_response_pt1pt2->Fill(pt1_truth_bin + nbins*pt2_truth_bin, event_scale);
-				// 	h_flat_truth_to_response_pt1pt2->Fill(pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
-				// 	h_flat_response_pt1pt2->Fill(pt1_reco_bin + nbins*pt2_reco_bin, pt1_truth_bin + nbins*pt2_truth_bin, event_scale);
-				// 	h_flat_response_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin, pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
-				// 	rooResponse.Fill(pt1_reco_bin + nbins*pt2_reco_bin,pt1_truth_bin + nbins*pt2_truth_bin, event_scale);
-				// 	rooResponse.Fill(pt2_reco_bin + nbins*pt1_reco_bin,pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
-				// 	h_count_flat_truth_pt1pt2->Fill(pt1_truth_bin + nbins*pt2_truth_bin);
-				// 	h_count_flat_truth_pt1pt2->Fill(pt2_truth_bin + nbins*pt1_truth_bin);
-				// 	h_count_flat_reco_pt1pt2->Fill(pt1_reco_bin + nbins*pt2_reco_bin);
-				// 	h_count_flat_reco_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin);	      
-					
-				// }
-				// else if (!(full_or_half && fill_response))
-				// {
-				// 	if (minit >= measure_subleading_cut && maxit >= measure_leading_cut && maxit < ipt_bins[measure_leading_bin + 2])
-				// 	{
-				// 		h_truth_xj->Fill(minit/maxit, event_scale);
-				// 		h_linear_truth_xj->Fill(minit/maxit, event_scale);
-				// 	}
-				// 	h_pt1pt2->Fill(es1, es2, event_scale);
-				// 	h_pt1pt2->Fill(es2, es1, event_scale);
-				// 	h_e1e2->Fill(e1, e2, event_scale);
-				// 	h_e1e2->Fill(e2, e1, event_scale);
-
-				// 	h_flat_truth_pt1pt2->Fill(pt1_truth_bin + nbins*pt2_truth_bin, event_scale);
-				// 	h_flat_truth_pt1pt2->Fill(pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
-				// 	h_flat_reco_pt1pt2->Fill(pt1_reco_bin + nbins*pt2_reco_bin, event_scale);
-				// 	h_flat_reco_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin, event_scale);
-				// }
-			
-			
-				
-				if (maxi >= measure_leading_cut && mini>= measure_subleading_cut)
-				{
-					h_reco_xj->Fill(mini/maxi, event_scale);
-					h_linear_reco_xj->Fill(mini/maxi, event_scale);
-				}
 				h_mbd_vertex->Fill(mbd_vertex[isample], event_scale);
-				if (!ispp && has_sumeT[isample]) h_sumeT->Fill(sumeT[isample], event_scale);
-				if (!ispp) h_centrality->Fill(centrality[isample], event_scale);
-				
-				continue;
-			} 
-			// else
-			//   {
-			//     h_truth_xj->Fill(e2/e1, event_scale);
-			//     h_linear_truth_xj->Fill(e2/e1, event_scale);
-			//     h_flat_truth_pt1pt2->Fill(pt1_truth_bin + nbins*pt2_truth_bin, event_scale);
-			//     h_flat_truth_pt1pt2->Fill(pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
-
-			//     h_pt1pt2->Fill(es1, es2, event_scale);
-			//     h_pt1pt2->Fill(es2, es1, event_scale);
-
-			//     h_flat_reco_pt1pt2->Fill(pt1_reco_bin + nbins*pt2_reco_bin, event_scale);
-			//     h_flat_reco_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin, event_scale);
-			//     h_reco_xj->Fill(mini/maxi, event_scale);
-			//     h_linear_reco_xj->Fill(mini/maxi, event_scale);
-			//     rooResponse.Miss(pt1_truth_bin + nbins*pt2_truth_bin, event_scale);
-			//     rooResponse.Miss(pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
-			//     rooResponse.Fake(pt1_reco_bin + nbins*pt2_reco_bin, event_scale);
-			//     rooResponse.Fake(pt2_reco_bin + nbins*pt1_reco_bin, event_scale);
-
-			//     h_flat_reco_to_response_pt1pt2->Fill(pt1_reco_bin + nbins*pt2_reco_bin, event_scale);
-			//     h_flat_reco_to_response_pt1pt2->Fill(pt2_reco_bin + nbins*pt1_reco_bin, event_scale);
-			//     h_flat_truth_to_response_pt1pt2->Fill(pt1_truth_bin + nbins*pt2_truth_bin, event_scale);
-			//     h_flat_truth_to_response_pt1pt2->Fill(pt2_truth_bin + nbins*pt1_truth_bin, event_scale);
-			//     continue;
-			//   }
-
-			//std::cout << "something not right" << std::endl;
+				h_sumeT->Fill(sumeT[isample], event_scale);
+				h_centrality->Fill(centrality[isample], event_scale);
+			}
+			
 		}
+		std::cout << std::endl;
     }
 
 	h_flat_reco_pt1pt2->Scale(.5);
 	h_flat_truth_pt1pt2->Scale(.5);
-
 	h_flat_reco_to_response_pt1pt2->Scale(.5);
 	h_flat_truth_to_response_pt1pt2->Scale(.5);
 	h_flat_response_pt1pt2->Scale(.5);
 
 	int number_of_mins = 1;
-	if (minentries == 0) number_of_mins = 20;
+	if (minentries == 0){ number_of_mins = 20;}
   	for (int imin = minentries; imin < minentries + number_of_mins; imin++)       
     {
 		std::cout << "Minimum Entries == " << imin << std::endl;
@@ -1024,6 +1064,7 @@ int createResponse_noempty_AA (
 		std::vector<int> binnumbers_truth{};
 		int nrecobins = 0;
 		int ntruthbins = 0;
+		// Pass 1: reco bins, unweighted-count threshold (unchanged behavior).
 		for (int ib = 0; ib < nbins*nbins; ib++)
 		{
 			if (h_count_flat_reco_pt1pt2->GetBinContent(ib+1) < imin)
@@ -1038,7 +1079,37 @@ int createResponse_noempty_AA (
 				binnumbers_reco.push_back(nrecobins);
 				h_flat_reco_mapping->SetBinContent(ib+1, nrecobins);
 			}
-	  		if (h_count_flat_truth_pt1pt2->GetBinContent(ib+1) < imin)
+		}
+		// Pass 2: truth bins. Two criteria on top of the historical count cut:
+		//   (a) minentries_truth: raise the truth-side count threshold until the
+		//       number of kept truth bins is comparable to the kept reco bins
+		//       (117 truth vs 95 reco leaves ~22 null-space directions in which
+		//       Bayes iterations wander, i.e. non-converging prior dependence);
+		//   (b) minentries_link: require the truth bin to have at least this many
+		//       unweighted response fills into KEPT reco bins, so no retained
+		//       truth bin is (nearly) unconstrained by the measurement.
+		// With minentries_truth == minentries and minentries_link == 0 this is
+		// identical to the historical trimming.
+		const int imin_truth = (minentries == 0) ? imin : std::max(imin, minentries_truth);
+		int ndropped_by_link = 0;
+		for (int ib = 0; ib < nbins*nbins; ib++)
+		{
+			bool keep = h_count_flat_truth_pt1pt2->GetBinContent(ib+1) >= imin_truth;
+			if (keep && minentries_link > 0)
+			{
+				double nlink = 0;
+				for (int ibr = 0; ibr < nbins*nbins; ibr++)
+				{
+					if (binnumbers_reco.at(ibr) == 0) continue;
+					nlink += h_count_flat_response_pt1pt2->GetBinContent(h_count_flat_response_pt1pt2->GetBin(ibr+1, ib+1));
+				}
+				if (nlink < minentries_link)
+				{
+					keep = false;
+					ndropped_by_link++;
+				}
+			}
+	  		if (!keep)
 	    	{
 				nempty_truth++;
 				binnumbers_truth.push_back(0);
@@ -1051,6 +1122,9 @@ int createResponse_noempty_AA (
 				h_flat_truth_mapping->SetBinContent(ib+1, ntruthbins);
 			}
 		}
+		std::cout << "Trimming: kept " << ntruthbins << " truth / " << nrecobins
+				  << " reco bins (truth threshold " << imin_truth
+				  << ", dropped by link criterion: " << ndropped_by_link << ")" << std::endl;
 		TH1D *h_flat_truth_skim = new TH1D(Form("h_flat_truth_skim_min%d", imin),"", ntruthbins, 0, ntruthbins);
 		TH1D *h_flat_reco_skim = new TH1D(Form("h_flat_reco_skim_min%d", imin),"", nrecobins, 0, nrecobins);
 		TH1D *h_flat_truth_to_unfold_skim = new TH1D(Form("h_flat_truth_to_unfold_skim_min%d", imin),"", ntruthbins, 0, ntruthbins);
@@ -1508,10 +1582,16 @@ int createResponse_noempty_AA (
 
 			TString responsepath = "response_matrices/response_matrix_" + system_string + "_r0" + std::to_string(cone_size);
 			
-			if (primer > 0)
+			if (PRIMER1)
 			{
-				responsepath += "_PRIMER" + std::to_string(primer);;
+				responsepath += "_PRIMER1";
 			}
+			if (PRIMER2)
+			{
+				responsepath += "_PRIMER2";
+			}
+			
+
 			if (half_closure)
 			{
 				responsepath = "response_matrices/response_matrix_" + system_string + "_r0" + std::to_string(cone_size) + "_HALF";
@@ -1540,6 +1620,11 @@ int createResponse_noempty_AA (
 			h_sumeT->Write();
 			h_pt1pt2->Write();
 			h_e1e2->Write();
+			// Unweighted trimming inputs, saved so minentries_truth/minentries_link
+			// can be tuned offline without re-running the event loop.
+			h_count_flat_truth_pt1pt2->Write();
+			h_count_flat_reco_pt1pt2->Write();
+			h_count_flat_response_pt1pt2->Write();
 			// Full closure drawing
 			h_linear_truth_xj->Write();
 			h_xj_truth->Write();
@@ -1554,6 +1639,7 @@ int createResponse_noempty_AA (
 				h_xj_refold[iter]->Write();
 			}
 			h_xj_reco->Write();
+			
 				
 			fr->Close();
 

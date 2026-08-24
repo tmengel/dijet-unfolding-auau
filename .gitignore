@@ -1,6 +1,7 @@
 # install
 install/
-
+results/
+archive/
 # for dstlists
 *.list
 

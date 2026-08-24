@@ -19,14 +19,28 @@
 #include "PlotUtils.h"
 #include "priorReweightQA.h"
 
-enum SubleadFlag { 
-  kSubleadMatched = -1, 
-  kNoRecoCandidate = 0, 
-  kRealElsewhere = 1, 
-  kTruthOutsideFiducial = 2 
+enum SubleadFlag {
+  kSubleadMatched = -1,
+  kNoRecoCandidate = 0,
+  kRealElsewhere = 1,
+  kTruthOutsideFiducial = 2
 };
 
-int createResponse_noempty_AA (
+// INCLUSIVE-systematic variant of createResponse_noempty_AA.cxx.
+//
+// The only functional change is the input ntuple: this reads
+// jetNN_hijing_scaled_inclusive_inclusive_all.root, the output of
+// makeMatchedTreesAllPairsTaggedAuAu.C, where every unordered pair of
+// fiducial-selected truth jets in an event gets its own row (all C(n,2)
+// combinations) instead of just the event's leading+subleading dijet. That
+// ntuple has no sublead_flag or weight branch (see the comment in
+// makeMatchedTreesAllPairsTaggedAuAu.C -- sublead_flag specifically
+// diagnoses the leading/subleading pair and doesn't generalize to arbitrary
+// pairs), so both fall back to their existing defaults below: sublead_flag
+// stays kSubleadMatched (no UE-flux skip, no missed_from_fid reclassification)
+// and event weighting is disabled. Everything downstream of the file load --
+// cuts, smearing, classification, trimming, RooUnfoldBayes -- is unchanged.
+int createResponse_noempty_AA_inclusive (
 	const std::string configfile = "binning.config", 
 	const int full_or_half = 0, 
 	const int niterations = 10, 
@@ -81,11 +95,14 @@ int createResponse_noempty_AA (
 	std::string system_string = rb.get_system_string(centrality_bin);
 	std::cout << "System string: " << system_string << std::endl;
 	
-	std::string j10_file = std::getenv("TNUPLE_SIM_FILE_JET10");
-	std::string j20_file = std::getenv("TNUPLE_SIM_FILE_JET20");
-	std::string j30_file = std::getenv("TNUPLE_SIM_FILE_JET30");
-	
-	std::cout << "Using matched simulation files:" << std::endl;
+	// AllPairs/inclusive ntuples, not the leading+subleading TNUPLE_SIM_FILE_JET*
+	// used by createResponse_noempty_AA.cxx -- see header comment above.
+	std::string tntuple_path = std::getenv("DIJET_TNTUPLE_PATH");
+	std::string j10_file = tntuple_path + "/jet10_hijing_scaled_inclusive_inclusive_all.root";
+	std::string j20_file = tntuple_path + "/jet20_hijing_scaled_inclusive_inclusive_all.root";
+	std::string j30_file = tntuple_path + "/jet30_hijing_scaled_inclusive_inclusive_all.root";
+
+	std::cout << "Using matched simulation files (AllPairs/inclusive):" << std::endl;
 	std::cout << "  Jet10: " << j10_file << std::endl;
 	std::cout << "  Jet20: " << j20_file << std::endl;
 	std::cout << "  Jet30: " << j30_file << std::endl;
@@ -827,33 +844,26 @@ int createResponse_noempty_AA (
 			}
 		
 			// const bool truth_good = (maxit >= sample_boundary[1]/* truth_leading_cut*/ && minit >= truth_subleading_cut && dphi_truth[isample] >= dphicuttruth);
-			const bool truth1_good = (maxit >= truth_leading_cut);
-			const bool truth2_good = (minit >= truth_subleading_cut);
-			const bool truthpair_good = (dphi_truth[isample] >= dphicuttruth);
-			const bool truth_good = truth1_good && truth2_good && truthpair_good;
-
-			const bool reco1_good = (maxi >= reco_leading_cut);
-			const bool reco2_good = (mini >= reco_subleading_cut);
-			const bool recopair_good = (dphi_reco[isample] >= dphicut);
-			const bool reco_good = reco1_good && reco2_good && recopair_good;
-
-
-			const bool sublead_is_ue_flux = ( sublead_flag[isample] ==  1 ) && ( !match[isample] );
-			const bool sublead_truth_outside_range = ( sublead_flag[isample] ==  2 ) && ( !match[isample] );
-
-			const bool skip_pair = (!truth_good && !reco_good) || sublead_is_ue_flux;
-			if ( skip_pair )
+			const bool truth_good = (maxit >= truth_leading_cut && minit >= truth_subleading_cut && dphi_truth[isample] >= dphicuttruth);
+			const bool reco_good = (maxi >= reco_leading_cut && mini >= reco_subleading_cut && dphi_reco[isample] >= dphicut);
+			
+			const bool sublead_is_ue_flux = false;// doesn't matter ( sublead_flag[isample] ==  1 );
+			const bool skip_pair = !truth_good && !reco_good;
+			if ( skip_pair  || sublead_is_ue_flux ) 
 			{
 				continue;
 			}
 
-			const bool miss_pair       = truth_good && !reco_good && sublead_truth_outside_range;
-			const bool missed_from_fid = !truth_good && reco_good && sublead_truth_outside_range && false;
-
-			// sublead_is_ue_flux pairs already continue'd above, so this is
-			// implicitly "not UE flux" too.
-			const bool fake_pair = !truth_good && reco_good && !sublead_truth_outside_range && false; // dont do fakes
+			const bool miss_pair       = truth_good && !reco_good;
+		
+			const bool fake_pair = !truth_good && reco_good && false; // dont do fakes
+			
 			const bool real_pair = truth_good && reco_good && match[isample];
+		
+		
+
+			// Prior reweighting must come after the ipt_bins loop above so that
+			// pt1_truth_bin/pt2_truth_bin hold real bin indices (same ordering as version0).
 			// prior_qa::weight_bin() owns the flat-index-to-ROOT-bin convention and is
 			// the same call the QA above uses, so the plots cannot silently disagree
 			// with what is applied here. It returns k+1 for flat index
@@ -876,7 +886,7 @@ int createResponse_noempty_AA (
 			}
 
 
-			if ( miss_pair )
+			if ( miss_pair  )
 			{
 				if (use_for_response)
 				{
