@@ -20,6 +20,7 @@ void getCentralityReweighting(const int cone_size = 4, const int centrality_bin 
   const bool flow_sys = std::fabs(flow_v22_scale - 1.0) > 1e-6 ||
                         std::fabs(flow_v33_scale - 1.0) > 1e-6;
   Int_t inclusive_sys = rb.get_inclusive_sys();
+  Int_t flavor_sys = rb.get_flavor_sys();
   Double_t JES_sys = rb.get_jes_sys();
   Double_t JER_sys = rb.get_jer_sys();
   Int_t prior_sys = rb.get_prior_sys();
@@ -37,7 +38,13 @@ void getCentralityReweighting(const int cone_size = 4, const int centrality_bin 
 
   if (inclusive_sys)
     sys_name = "INCLUSIVE";
-    
+
+  if (flavor_sys == 1)
+    sys_name = "QQ";
+
+  if (flavor_sys == 2)
+    sys_name = "QGGG";
+
   if (JER_sys < 0)
     sys_name = "negJER";
 

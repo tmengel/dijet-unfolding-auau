@@ -110,6 +110,7 @@ public:
   Int_t get_herwig(){ return penv->GetValue("HERWIG", 0); }
   
   Int_t get_inclusive_sys(){ return penv->GetValue("INCLUSIVE", 0); }
+  Int_t get_flavor_sys(){ return penv->GetValue("FLAVOR", 0); }  // 0 = none, 1 = qq, 2 = qg/gg
   Double_t get_jes_sys(){ return penv->GetValue("JES", 0.0); }
   Double_t get_jer_sys(){ return penv->GetValue("JER", 0.0); }
   Double_t get_first_xj(){ return penv->GetValue("first_xj", 0.0); }
@@ -321,8 +322,8 @@ public:
   // (built by jer/remake_smear_functions.C from the preliminary file).
   // jer_smear_functions_prelim_8pct_base.root holds the preliminary
   // 8%/5%/11% functions for cross-checks only.
-  // std::string jerfile = "jer/jer_smear_functions.root";
   std::string jerfile = "jer/jer_smear_functions.root";
+  // std::string jerfile = "jer/jer_smear_functions.root";
   TFile *fjer{nullptr};
   TEnv *penv{nullptr};
   TF1 *f_smear_function{nullptr};
