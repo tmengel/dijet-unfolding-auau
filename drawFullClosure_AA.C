@@ -106,7 +106,7 @@ void drawFullClosure_AA(const int cone_size = 3, const int centrality_bin = 0)
   std::cout << "Meas 2: " <<  measure_subleading_cut << std::endl;
   
 
-  TFile *fin = new TFile(Form("%s/response_matrices/response_matrix_AA_cent_%d_r%02d_nominal.root", rb.get_code_location().c_str(), centrality_bin, cone_size),"r");
+  TFile *fin = new TFile(Form("%s/response_matrices/response_matrix_AA_cent_%d_r%02d_FULL_nominal.root", rb.get_code_location().c_str(), centrality_bin, cone_size),"r");
   if (!fin)
     {
       std::cout << " no file " << std::endl;

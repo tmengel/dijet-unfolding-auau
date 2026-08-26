@@ -9,6 +9,16 @@ source "$script_dir/setup_env.sh"
 conesize="${CONESIZE:-3}"
 cent="${1:?Usage: $0 <centrality_bin 0-3>}"
 
+# createResponse_exclusive_AA.cxx variant of run_full_cent.sh: builds the
+# response from the per-leg TTree "T" written by dijet_matching.C (already
+# classified Fill/Miss/Fake/Skip per the PPG14 "Dijet matching and response
+# filling" slide) instead of the tn_match TNtuple written by
+# makeMatchedTreesTaggedAuAu.C. Only the five createResponse_* calls below
+# differ from run_full_cent.sh -- everything downstream (unfold, systematics,
+# closure tests, plots) reads the same response_matrices/*.root output
+# format regardless of which macro built it, so those calls are unchanged.
+exclusive_dir="${EXCLUSIVE_DIR:-/home/tmengel/PPG14/rootfiles/out/exclusive}"
+
 # Nominal Bayesian-iteration index (0-indexed) -> N_iter = 2, matching the
 # prior_iteration constant in createResponse_noempty_AA.cxx. The iteration scan
 # gives the same optimum for every centrality bin.
@@ -36,6 +46,9 @@ export TNUPLE_DATA_FILE="${DIJET_TNTUPLE_PATH}/TNTUPLE_DIJET_r0${conesize}_${AUA
 # export TNUPLE_SIM_FILE_JET20="${DIJET_TNTUPLE_PATH}/TNTUPLE_DIJET_SIM_r0${conesize}_jet20_${AUAU_SIM_NAME}.root"
 # export TNUPLE_SIM_FILE_JET30="${DIJET_TNTUPLE_PATH}/TNTUPLE_DIJET_SIM_r0${conesize}_jet30_${AUAU_SIM_NAME}.root"
 
+# Unused by createResponse_exclusive_AA.cxx (it takes exclusive_dir as a
+# function argument instead) -- left exported since the commented-out COMB
+# modulation section below still references them if ever re-enabled.
 export TNUPLE_SIM_FILE_JET10="${DIJET_TNTUPLE_PATH}/jet10_hijing_scaled_inclusive_all.root"
 export TNUPLE_SIM_FILE_JET20="${DIJET_TNTUPLE_PATH}/jet20_hijing_scaled_inclusive_all.root"
 export TNUPLE_SIM_FILE_JET30="${DIJET_TNTUPLE_PATH}/jet30_hijing_scaled_inclusive_all.root"
@@ -45,9 +58,10 @@ V0_REF="${V0_REF:-/home/tmengel/PPG14/version0/v001_20260715}"
 compare_range=1
 
 log() { echo "[cent ${cent} $(date +%H:%M:%S)] $*"; }
-log "=== run_full_cent.sh: conesize=${conesize}, cent=${cent}, submode=${submode} ==="
+log "=== run_full_cent_exclusive.sh: conesize=${conesize}, cent=${cent}, submode=${submode} ==="
 log "AUAU_DATA_FILE=${AUAU_DATA_FILE}"
 log "AUAU_SIM_FILE=${AUAU_SIM_FILE}"
+log "exclusive_dir=${exclusive_dir}"
 
 
 # probability_file="${DIJET_UNFOLDING_PATH}/unfolding_hists/probability_hists_AA_r0${conesize}.root"
@@ -69,40 +83,44 @@ log "AUAU_SIM_FILE=${AUAU_SIM_FILE}"
 # fi
 
 log "=== primer1: build response, unfold, centrality reweight ==="
-root -l -q -b "createResponse_noempty_AA.cxx(\"${AUAU_CONFIG}\", 0, 10, ${conesize}, ${cent}, 1)"
+root -l -q -b "createResponse_exclusive_AA.cxx(\"${AUAU_CONFIG}\", 0, 10, ${conesize}, ${cent}, 1, \"${exclusive_dir}\")"
 root -l -q -b "unfoldData_noempty_AA.cxx(\"${AUAU_CONFIG}\", 10, ${conesize}, ${cent}, 1)"
 root -l -q -b "getCentralityReweighting.C(${conesize}, ${cent}, \"${AUAU_CONFIG}\")"
 
 log "=== primer2: build response, unfold, centrality reweight ==="
-root -l -q -b "createResponse_noempty_AA.cxx(\"${AUAU_CONFIG}\", 0, 10, ${conesize}, ${cent}, 2)"
+root -l -q -b "createResponse_exclusive_AA.cxx(\"${AUAU_CONFIG}\", 0, 10, ${conesize}, ${cent}, 2, \"${exclusive_dir}\")"
 root -l -q -b "unfoldData_noempty_AA.cxx(\"${AUAU_CONFIG}\", 10, ${conesize}, ${cent}, 2)"
 
 log "=== nominal: build response, validate reweighting, unfold, stat uncertainties ==="
-root -l -q -b "createResponse_noempty_AA.cxx(\"${AUAU_CONFIG}\", 0, 10, ${conesize}, ${cent}, 0)"
+root -l -q -b "createResponse_exclusive_AA.cxx(\"${AUAU_CONFIG}\", 0, 10, ${conesize}, ${cent}, 0, \"${exclusive_dir}\")"
 root -l -q -b "validateReweighting_AA.C(${conesize}, ${cent}, \"${AUAU_CONFIG}\")"
 root -l -q -b "unfoldData_noempty_AA.cxx(\"${AUAU_CONFIG}\", 10, ${conesize}, ${cent})"
-root -l -q -b "unfoldDataUncertainties_noempty_AA.cxx(10, ${conesize}, ${cent})"
+# root -l -q -b "unfoldDataUncertainties_noempty_AA.cxx(10, ${conesize}, ${cent})"
 
 log "=== JES / JER systematics ==="
-bash run_all_sys_AA.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_negJES_AA.config"
-bash run_all_sys_AA.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_posJES_AA.config"
-bash run_all_sys_AA.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_negJER_AA.config"
-bash run_all_sys_AA.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_posJER_AA.config"
+bash run_all_sys_AA_exclusive.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_negJES_AA.config"
+bash run_all_sys_AA_exclusive.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_posJES_AA.config"
+bash run_all_sys_AA_exclusive.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_negJER_AA.config"
+bash run_all_sys_AA_exclusive.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_posJER_AA.config"
 
 log "=== combinatoric (COMB) flow-modulation systematic ==="
 root -l -b -q "makeFlowModulationPreload_AA.C(${conesize}, ${cent} \
     , \"${DIJET_CONFIG_PATH}/binning_COMBDown_AA.config\" \
     , \"${DIJET_CONFIG_PATH}/binning_COMBUp_AA.config\")"
-bash run_all_sys_AA.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_COMBDown_AA.config"
-bash run_all_sys_AA.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_COMBUp_AA.config"
+bash run_all_sys_AA_exclusive.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_COMBDown_AA.config"
+bash run_all_sys_AA_exclusive.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_COMBUp_AA.config"
 
 log "=== prior / inclusive systematics ==="
-bash run_all_sys_AA.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_prior_AA.config"
-bash run_all_sys_AA.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_Inclusive_AA.config"
+bash run_all_sys_AA_exclusive.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_prior_AA.config"
+
+# bash run_inclusive_sys_AA_exclusive.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_Inclusive_AA.config"
+bash run_all_sys_AA_exclusive.sh "${conesize}" "${cent}" "${DIJET_CONFIG_PATH}/binning_Inclusive_AA.config"
+
+bash run_flavor_workflow_AA.sh "${cent}"
 
 log "=== full + half closure responses and tests ==="
-root -l -b -q "createResponse_noempty_AA.cxx(\"${AUAU_CONFIG}\",2,10,${conesize},${cent},0)"
-root -l -b -q "createResponse_noempty_AA.cxx(\"${AUAU_CONFIG}\",1,10,${conesize},${cent},0)"
+root -l -b -q "createResponse_exclusive_AA.cxx(\"${AUAU_CONFIG}\",2,10,${conesize},${cent},0,\"${exclusive_dir}\")"
+root -l -b -q "createResponse_exclusive_AA.cxx(\"${AUAU_CONFIG}\",1,10,${conesize},${cent},0,\"${exclusive_dir}\")"
 root -l -b -q "drawClosureTests_AA.C(${conesize},${cent},${nominal_iter},\"${AUAU_CONFIG}\")"
 
 log "=== plots: systematics, iteration scan, final unfold, prior, dphi/COMB modulation ==="
@@ -115,7 +133,6 @@ root -l -q -b "compareSystematics_AA.C(${compare_range}, ${nominal_iter} \
     , \"${V0_REF}/unfolding_hists\" \
     , \"${DIJET_UNFOLDING_PATH}/comparison_plots\" \
     , ${cent})"
-    
 root -l -b -q "drawFinalUnfold_AA.C(${conesize},${cent}, \"${AUAU_CONFIG}\")"
 root -l -b -q "drawFinalUnfold_AA_only.C(${conesize}, ${cent}, \"${AUAU_CONFIG}\", ${nominal_iter})"
 root -l -b -q "drawFinalUnfold_AA_cent.C(${conesize}, ${cent}, \"${AUAU_CONFIG}\")"
@@ -125,15 +142,15 @@ root -l -b -q "drawResponse_AA.C(${conesize}, ${cent})"
 root -l -b -q "drawFullClosure_AA.C(${conesize}, ${cent})"
 root -l -b -q "drawHalfClosure_AA.C(${conesize}, ${cent})"
 
-log "=== COMB modulation plots ==="
+# log "=== COMB modulation plots ==="
 # force_sim_cache=false
 # [[ "${FORCE_SIM_CACHE:-0}" == "1" ]] && force_sim_cache=true
-# root -l -b -q "makeCOMBSimulationCache_AA.C(${conesize},-1,\"${AUAU_CONFIG}\",${force_sim_cache})" 
-# root -l -b -q "drawCOMBModulation_AA_v2.C(${conesize},${cent},\"${AUAU_CONFIG}\")"
-# root -l -b -q "drawCOMBModulationSimSimple_AA.C(${conesize},${cent},\"${AUAU_CONFIG}\")"
-# root -l -b -q "drawCOMBModulationDataSimple_AA.C(${conesize},${cent},\"${AUAU_CONFIG}\")"
-# root -l -b -q "drawCOMBModulation_AA.C(${conesize}, ${cent}, \"${AUAU_CONFIG}\")"
-# root -l -b -q "drawCOMBDataSimSimple_AA_v2.C(${conesize}, ${cent}, \"${AUAU_CONFIG}\")"
-# root -l -b -q "drawCOMBModulation_AA_v2.C(${conesize}, ${cent}, \"${AUAU_CONFIG}\")"
+# root -l -b -q "makeCOMBSimulationCache_AA.C(${conesize},-1,\"${AUAU_CONFIG}\",${force_sim_cache})"
+root -l -b -q "drawCOMBModulation_AA_v2.C(${conesize},${cent},\"${AUAU_CONFIG}\")"
+root -l -b -q "drawCOMBModulationSimSimple_AA.C(${conesize},${cent},\"${AUAU_CONFIG}\")"
+root -l -b -q "drawCOMBModulationDataSimple_AA.C(${conesize},${cent},\"${AUAU_CONFIG}\")"
+root -l -b -q "drawCOMBModulation_AA.C(${conesize}, ${cent}, \"${AUAU_CONFIG}\")"
+root -l -b -q "drawCOMBDataSimSimple_AA_v2.C(${conesize}, ${cent}, \"${AUAU_CONFIG}\")"
+root -l -b -q "drawCOMBModulation_AA_v2.C(${conesize}, ${cent}, \"${AUAU_CONFIG}\")"
 
 log "=== done ==="

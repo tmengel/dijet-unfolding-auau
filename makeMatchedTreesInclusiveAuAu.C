@@ -253,10 +253,11 @@ void makeMatchedTreesInclusiveAuAu(
     // sort jets
     std::sort(truthJets.begin(), truthJets.end(), descendingPt);
     std::sort(recoJets.begin(), recoJets.end(), descendingPt);
+    
     // skip events w/ fewer than 2 truth jets
-    if (truthJets.size() < 2) continue;
+    if (truthJets.size() < 2){ continue; }
 
-    const auto matches = matchJets( truthJets, recoJets, static_cast<float>(cone_size));
+    const auto matches = matchJets( truthJets, recoJets, 0.75*static_cast<float>(cone_size));
     const int centralityBin = std::clamp(centrality/10, 0, 9);
     for (const auto& truthJet : truthJets)
     {

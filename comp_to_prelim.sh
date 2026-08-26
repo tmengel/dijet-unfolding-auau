@@ -8,11 +8,11 @@ source "$script_dir/setup_env.sh"
 
 
 # prelim_result_dir="/home/tmengel/PPG14/version1/dijet-unfolding-final/results/final_hists_NocentCut_jes4_jerv1_rho_comb_norm0prior0_sumeTZ"
-# prelim_result_dir="/home/tmengel/PPG14/version1/dijet-unfolding-final/preliminary_results"
+prelim_result_dir="/home/tmengel/PPG14/version1/dijet-unfolding-final/preliminary_results"
 # prelim_result_dir="/home/tmengel/PPG14/version1/dijet-unfolding-final/results/final_hists_centCut_jes4_jerv1_rho_comb_norm05prior1_sumeTZ_tbin0"
 # prelim_result_dir="/home/tmengel/PPG14/version1/dijet-unfolding-final/results/final_hists_Nocentcut_jes4_jerv1_rho_comb_norm1prior05_sumeTZ_tbin0"
 # prelim_result_dir="/home/tmengel/PPG14/version1/dijet-unfolding-final/results/final_hists_centCut_jes4_jerv1_rho_comb_norm1prior1_sumeTZ_tbin0"
-prelim_result_dir="/home/tmengel/PPG14/version1/dijet-unfolding-final/results/final_hists_NocentCut_jes2"
+# prelim_result_dir="/home/tmengel/PPG14/version1/dijet-unfolding-final/results/final_hists_NocentCut_jes2"
 output_dir="${DIJET_UNFOLDING_PATH}/compare_prelim"
 mkdir -p "$output_dir"
 conesize=3

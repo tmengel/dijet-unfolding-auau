@@ -2,7 +2,7 @@
 #include "read_binning.h"
 #include "histo_opps.h"
 
-void drawPrior_AA(const int cone_size = 3, const int centrality_bin = 0)
+void drawPrior_AA(const int cone_size = 3, const int centrality_bin = 0, const std::string sys_name = "nominal")
 {
   int color_nom = kBlack;
   int color_p1 = kBlue;
@@ -85,21 +85,21 @@ void drawPrior_AA(const int cone_size = 3, const int centrality_bin = 0)
   std::cout << "Meas 2: " <<  measure_subleading_cut << std::endl;
 
 
-  TString responsepath = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_nominal.root", centrality_bin, cone_size);
+  TString responsepath = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_%s.root", centrality_bin, cone_size, sys_name.c_str());
   TFile *fr = new TFile(responsepath.Data(),"r");
   TH1D *h_nom_flat_reco_pt1pt2 = (TH1D*) fr->Get("h_reco_flat_pt1pt2");
   h_nom_flat_reco_pt1pt2->SetName("h_nom_flat_reco_pt1pt2");
   TH1D *h_nom_flat_truth_pt1pt2 = (TH1D*) fr->Get("h_truth_flat_pt1pt2");
   h_nom_flat_truth_pt1pt2->SetName("h_nom_flat_truth_pt1pt2");
-  
-  TString responsepath_p1 = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_PRIMER1_nominal.root", centrality_bin, cone_size);
+
+  TString responsepath_p1 = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_PRIMER1_%s.root", centrality_bin, cone_size, sys_name.c_str());
   TFile *fr_p1 = new TFile(responsepath_p1.Data(),"r");
   TH1D *h_p1_flat_reco_pt1pt2= (TH1D*) fr_p1->Get("h_reco_flat_pt1pt2");
   h_p1_flat_reco_pt1pt2->SetName("h_p1_flat_reco_pt1pt2");
   TH1D *h_p1_flat_truth_pt1pt2 = (TH1D*) fr_p1->Get("h_truth_flat_pt1pt2");
   h_p1_flat_truth_pt1pt2->SetName("h_p1_flat_truth_pt1pt2");
 
-  TString responsepath_p2 = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_PRIMER2_nominal.root", centrality_bin, cone_size);
+  TString responsepath_p2 = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_PRIMER2_%s.root", centrality_bin, cone_size, sys_name.c_str());
   TFile *fr_p2 = new TFile(responsepath_p2.Data(),"r");
   TH1D *h_p2_flat_reco_pt1pt2= (TH1D*) fr_p2->Get("h_reco_flat_pt1pt2");
   h_p2_flat_reco_pt1pt2->SetName("h_p2_reco_flat_pt1pt2");
@@ -199,6 +199,12 @@ void drawPrior_AA(const int cone_size = 3, const int centrality_bin = 0)
   //leg->AddEntry(h_p2_xj_reco,"Prior Reco");
 
   leg->Draw("same");
-  c->Print(Form("%s/unfolding_plots/prior_compare_AA_cent_%d_r%02d.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size));
+  // Same filename as before when sys_name is the default "nominal" -- only
+  // suffixed for a non-default sys_name (e.g. the QQ/QGGG flavor check) so
+  // it doesn't collide with the nominal plot.
+  const TString outpath = (sys_name == "nominal")
+    ? Form("%s/unfolding_plots/prior_compare_AA_cent_%d_r%02d.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size)
+    : Form("%s/unfolding_plots/prior_compare_AA_cent_%d_r%02d_%s.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size, sys_name.c_str());
+  c->Print(outpath);
   return;
 }

@@ -131,6 +131,7 @@ int unfoldData_noempty_AA(
 	
 	const int zyam_sys = rb.get_zyam_sys();
 	const int inclusive_sys = rb.get_inclusive_sys();
+	const int flavor_sys = rb.get_flavor_sys();
 	const double JES_sys = rb.get_jes_sys();
 	const double JER_sys = rb.get_jer_sys();
 	const bool prior_sys = rb.get_prior_sys();
@@ -155,6 +156,16 @@ int unfoldData_noempty_AA(
 	{
 		using_sys = 1;
 		sys_name = "INCLUSIVE";
+	}
+	if (flavor_sys == 1)
+	{
+		using_sys = 1;
+		sys_name = "QQ";
+	}
+	else if (flavor_sys == 2)
+	{
+		using_sys = 1;
+		sys_name = "QGGG";
 	}
 	if (JER_sys != 0)
 	{
@@ -542,7 +553,11 @@ int unfoldData_noempty_AA(
   for (int iter = 0; iter < niterations; iter++ )
   {
     
-    RooUnfoldBayes   unfold (rooResponse, h_flat_data_skim, iter + 1);    // OR
+    // handleFakes=true -- see createResponse_exclusive_AA.cxx for why this
+    // must be explicit: RooUnfoldBayes defaults it to false and silently
+    // unfolds fake-jet content in the response as signal otherwise, instead
+    // of excluding it as intended.
+    RooUnfoldBayes   unfold (rooResponse, h_flat_data_skim, iter + 1, false, true);    // OR
     h_flat_unfold_skim[iter] = (TH1D*) unfold.Hunfold();
     std::cout <<" Nbins skim reco = "<<h_flat_unfold_skim[iter]->GetNbinsX()<<std::endl;
     h_flat_unfold_pt1pt2[iter] = (TH1D*) h_flat_truth_pt1pt2->Clone();

@@ -3,7 +3,7 @@
 
 #include "PlotUtils.h"
 
-void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0)
+void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0, const std::string sys_name = "nominal")
 {
 
 
@@ -84,31 +84,52 @@ void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0)
   std::cout << "Meas 2: " <<  measure_subleading_cut << std::endl;
 
 
-  TString responsepath = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_nominal.root", centrality_bin, cone_size);
+  TString responsepath = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_%s.root", centrality_bin, cone_size, sys_name.c_str());
   TFile *fr = new TFile(responsepath.Data(),"r");
 
   TH2D *h_flat_response_skim = (TH2D*) fr->Get("h_flat_response_skim");
 
-  TH1D *h_xj_reco = (TH1D*) fr->Get("h_xj_reco");
-  TH1D *h_xj_truth = (TH1D*) fr->Get("h_xj_truth");
-  TH1D *h_xj_unfold[10];
-  for (int iter =0; iter < 10; iter++)
+  // The "Full Closure" panel below needs the dedicated full-closure response
+  // (full_or_half=2, no prior reweighting applied) -- NOT the plain nominal
+  // one, which blends its prior toward PRIMER2's real-data unfold
+  // (prior_fraction=1.0) and so isn't a closure test at all. Mirrors how the
+  // Half Closure panel already reads its own HALF_nominal.root below.
+  // Neither FULL_ nor HALF_ variants exist for a flavor sys_name (QQ/QGGG
+  // only ever run primer1/primer2/nominal, no closure passes) -- guarded
+  // below rather than assumed present.
+  TString responsepath_full = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_FULL_%s.root", centrality_bin, cone_size, sys_name.c_str());
+  TFile *frf = new TFile(responsepath_full.Data(),"r");
+  const bool haveFull = frf && !frf->IsZombie();
+  if (!haveFull) std::cout << "drawResponse_AA: no " << responsepath_full << " -- skipping Full Closure panel" << std::endl;
+
+  TH1D *h_xj_reco = haveFull ? (TH1D*) frf->Get("h_xj_reco") : nullptr;
+  TH1D *h_xj_truth = haveFull ? (TH1D*) frf->Get("h_xj_truth") : nullptr;
+  TH1D *h_xj_unfold[10] = {nullptr};
+  if (haveFull)
     {
-      h_xj_unfold[iter] = (TH1D*) fr->Get(Form("h_xj_unfold_iter%d", iter));
+      for (int iter =0; iter < 10; iter++)
+        {
+          h_xj_unfold[iter] = (TH1D*) frf->Get(Form("h_xj_unfold_iter%d", iter));
+        }
     }
 
-  TString response_halfpath = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_HALF_nominal.root", centrality_bin, cone_size);
+  TString response_halfpath = Form("response_matrices/response_matrix_AA_cent_%d_r%02d_HALF_%s.root", centrality_bin, cone_size, sys_name.c_str());
   TFile *frh = new TFile(response_halfpath.Data(),"r");
+  const bool haveHalf = frh && !frh->IsZombie();
+  if (!haveHalf) std::cout << "drawResponse_AA: no " << response_halfpath << " -- skipping Half Closure panel" << std::endl;
 
-  TH1D *h_xj_half_reco = (TH1D*) frh->Get("h_xj_reco");
-  TH1D *h_xj_half_truth = (TH1D*) frh->Get("h_xj_truth");
-  TH1D *h_xj_half_unfold[10];
-  for (int iter =0; iter < 10; iter++)
+  TH1D *h_xj_half_reco = haveHalf ? (TH1D*) frh->Get("h_xj_reco") : nullptr;
+  TH1D *h_xj_half_truth = haveHalf ? (TH1D*) frh->Get("h_xj_truth") : nullptr;
+  TH1D *h_xj_half_unfold[10] = {nullptr};
+  if (haveHalf)
     {
-      h_xj_half_unfold[iter] = (TH1D*) frh->Get(Form("h_xj_unfold_iter%d", iter));
+      for (int iter =0; iter < 10; iter++)
+        {
+          h_xj_half_unfold[iter] = (TH1D*) frh->Get(Form("h_xj_unfold_iter%d", iter));
+        }
     }
 
-  
+
   dlutility::SetyjPadStyle();
   TCanvas *cresponseskim = new TCanvas("fds","fds", 500, 500);
   cresponseskim->SetLogz();
@@ -127,7 +148,10 @@ void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0)
   dlutility::drawText("HIJING+PYTHIA8", 0.19, 0.88);
   dlutility::drawText(Form("%d - %d %%", (int) icentrality_bins[centrality_bin], (int) icentrality_bins[centrality_bin+1]), 0.19, 0.83);
 
-  cresponseskim->Print(Form("%s/unfolding_plots/response_matrix_AA_cent_%d.pdf", rb.get_code_location().c_str(), centrality_bin));
+  const TString responseskim_outpath = (sys_name == "nominal")
+    ? Form("%s/unfolding_plots/response_matrix_AA_cent_%d.pdf", rb.get_code_location().c_str(), centrality_bin)
+    : Form("%s/unfolding_plots/response_matrix_AA_cent_%d_r%02d_%s.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size, sys_name.c_str());
+  cresponseskim->Print(responseskim_outpath);
 
   std::cout << "bins: " << h_flat_response_skim->GetXaxis()->GetNbins() << " by " << h_flat_response_skim->GetYaxis()->GetNbins() << std::endl;
   TCanvas *cresponseskimzoom = new TCanvas("fdsz","fdsz", 500, 500);
@@ -140,8 +164,13 @@ void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0)
   dlutility::DrawSPHENIX_Prelim(0.93, 0.4);
   dlutility::drawText("Response matrix", 0.93, 0.3, 1);
 
-  cresponseskimzoom->Print(Form("%s/unfolding_plots/response_matrix_zoom_AA_cent_%d_r%02d.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size));
+  const TString responseskimzoom_outpath = (sys_name == "nominal")
+    ? Form("%s/unfolding_plots/response_matrix_zoom_AA_cent_%d_r%02d.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size)
+    : Form("%s/unfolding_plots/response_matrix_zoom_AA_cent_%d_r%02d_%s.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size, sys_name.c_str());
+  cresponseskimzoom->Print(responseskimzoom_outpath);
 
+  if (haveFull)
+  {
   TCanvas *cxj = new TCanvas("cxj","cxj", 500, 700);
 
   dlutility::ratioPanelCanvas(cxj);
@@ -193,9 +222,15 @@ void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0)
       line->SetLineColor(kRed + 3);
       line->SetLineWidth(2);
       line->Draw("same");
-      cxj->Print(Form("%s/unfolding_plots/full_closure_AA_cent_%d_r%02d_iter_%d.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size, iter));
+      const TString fullclosure_outpath = (sys_name == "nominal")
+        ? Form("%s/unfolding_plots/full_closure_AA_cent_%d_r%02d_iter_%d.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size, iter)
+        : Form("%s/unfolding_plots/full_closure_AA_cent_%d_r%02d_%s_iter_%d.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size, sys_name.c_str(), iter);
+      cxj->Print(fullclosure_outpath);
     }
+  }
 
+  if (haveHalf)
+  {
   TCanvas *cxjh = new TCanvas("cxjh","cxjh", 500, 700);
 
   dlutility::ratioPanelCanvas(cxjh);
@@ -226,11 +261,11 @@ void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0)
       dlutility::drawText(Form("Half Closure - N_{iter} = %d", iter + 1), 0.22, 0.54);
       TLegend *leg = new TLegend(0.22, 0.25, 0.4, 0.5);
       leg->SetLineWidth(0);
-      leg->AddEntry(h_xj_reco, "PYTHIA-8 Reco");
-      leg->AddEntry(h_xj_truth, "PYTHIA-8 Truth");
-      leg->AddEntry(h_xj_unfold[iter], "Unfolded");
+      leg->AddEntry(h_xj_half_reco, "PYTHIA-8 Reco");
+      leg->AddEntry(h_xj_half_truth, "PYTHIA-8 Truth");
+      leg->AddEntry(h_xj_half_unfold[iter], "Unfolded");
       leg->Draw("same");
-    
+
       cxjh->cd(2);
 
       TH1D *h_reco_compare = (TH1D*) h_xj_half_unfold[iter]->Clone();
@@ -239,15 +274,19 @@ void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0)
       dlutility::SetFont(h_reco_compare, 42, 0.06);
       dlutility::SetLineAtt(h_reco_compare, kBlack, 1,1);
       dlutility::SetMarkerAtt(h_reco_compare, kBlack, 1,8);
- 
+
       h_reco_compare->Draw("p");
       TLine *line = new TLine(0.1, 1, 1, 1);
       line->SetLineStyle(4);
       line->SetLineColor(kRed + 3);
       line->SetLineWidth(2);
       line->Draw("same");
-      cxjh->Print(Form("%s/unfolding_plots/half_closure_AA_cent_%d_r%02d_iter_%d.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size, iter));
+      const TString halfclosure_outpath = (sys_name == "nominal")
+        ? Form("%s/unfolding_plots/half_closure_AA_cent_%d_r%02d_iter_%d.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size, iter)
+        : Form("%s/unfolding_plots/half_closure_AA_cent_%d_r%02d_%s_iter_%d.pdf", rb.get_code_location().c_str(), centrality_bin, cone_size, sys_name.c_str(), iter);
+      cxjh->Print(halfclosure_outpath);
     }
+  }
 
   return;
 }

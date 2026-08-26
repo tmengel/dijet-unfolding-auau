@@ -486,10 +486,18 @@ int createResponse_exclusive_v2_AA (
 
 		std::cout << "doing prior" << std::endl;
 
-		auto * fun = new TFile(Form("unfolding_hists/unfolding_hists_%s_r%02d_PRIMER2_%s.root", system_string.c_str(), cone_size, sys_name.c_str()), "READ");
+		// Flavor cross-check (QQ/QGGG): data itself is never flavor-tagged, so
+		// "the data" the flavor-tagged truth should be pulled toward is the
+		// nominal unfolded pt1pt2, not the QQ/QGGG-response-unfolded version of
+		// the same data -- that would just reintroduce the flavor-tagged
+		// response's own migration pattern into the target. The truth below
+		// stays flavor-specific; only the unfold/data target changes.
+		const std::string prior_data_sys_name = (flavor_sys != 0) ? "nominal" : sys_name;
+
+		auto * fun = new TFile(Form("unfolding_hists/unfolding_hists_%s_r%02d_PRIMER2_%s.root", system_string.c_str(), cone_size, prior_data_sys_name.c_str()), "READ");
 		if ( !fun || fun->IsZombie() )
 		{
-			std::cerr << "Missing required unfolding histograms for " << system_string << " "<< sys_name << std::endl;
+			std::cerr << "Missing required unfolding histograms for " << system_string << " "<< prior_data_sys_name << std::endl;
 			return 1;
 		}
 		auto * h_unfold_flat_in = (TH1D*) fun->Get(Form("h_flat_unfold_pt1pt2_%d", prior_iteration)) -> Clone(Form("h_flat_unfold_pt1pt2_%d", prior_iteration));
