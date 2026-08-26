@@ -427,7 +427,12 @@ namespace prior_qa
     }
 
     // Two-panel "spectrum + ratio to target" plot shared by the flat and xJ QA.
+    // data is the normalized unfolded-data curve itself (w.unfold / its xJ
+    // projection) -- distinct from target, which is the fraction-blended mix of
+    // data and MC truth. Passing nullptr drops the curve for callers that don't
+    // have one.
     inline void draw_with_ratio(const TH1D *target, const TH1D *truth, const TH1D *reweighted,
+                                const TH1D *data,
                                 const std::string &xtitle, const std::string &ytitle,
                                 const std::vector<std::string> &captions,
                                 const std::string &outfile,
@@ -443,20 +448,24 @@ namespace prior_qa
       TH1D *h_target = (TH1D*) target->Clone(Form("h_qa_target_%d", id));
       TH1D *h_truth  = (TH1D*) truth ->Clone(Form("h_qa_truth_%d",  id));
       TH1D *h_rw     = (TH1D*) reweighted->Clone(Form("h_qa_rw_%d", id));
+      TH1D *h_data   = data ? (TH1D*) data->Clone(Form("h_qa_data_%d", id)) : nullptr;
       h_target->SetDirectory(nullptr);
       h_truth ->SetDirectory(nullptr);
       h_rw    ->SetDirectory(nullptr);
+      if (h_data) { h_data->SetDirectory(nullptr); }
 
       c->cd(1);
       if (logy) gPad->SetLogy();
       dlutility::SetLineAtt(h_target, kBlack,    3, 1);
       dlutility::SetLineAtt(h_truth,  kBlue + 1, 2, 2);
       dlutility::SetLineAtt(h_rw,     kRed + 1,  2, 1);
+      if (h_data) { dlutility::SetLineAtt(h_data, kGreen + 2, 2, 3); }
 
       h_target->SetTitle(Form(";%s;%s", xtitle.c_str(), ytitle.c_str()));
       dlutility::SetFont(h_target, 42, 0.055, 0.055, 0.05, 0.05);
       h_target->GetYaxis()->SetTitleOffset(1.3);
-      const double hi = std::max({h_target->GetMaximum(), h_truth->GetMaximum(), h_rw->GetMaximum()});
+      double hi = std::max({h_target->GetMaximum(), h_truth->GetMaximum(), h_rw->GetMaximum()});
+      if (h_data) { hi = std::max(hi, h_data->GetMaximum()); }
       if (logy)
       {
         double lo = 1e30;
@@ -476,8 +485,9 @@ namespace prior_qa
       h_target->Draw("hist");
       h_truth ->Draw("hist same");
       h_rw    ->Draw("hist same");
+      if (h_data) { h_data->Draw("hist same"); }
 
-      TLegend *leg = new TLegend(0.55, 0.68, 0.94, 0.90);
+      TLegend *leg = new TLegend(0.55, 0.63, 0.94, 0.90);
       leg->SetBorderSize(0);
       leg->SetFillStyle(0);
       leg->SetTextFont(42);
@@ -485,6 +495,7 @@ namespace prior_qa
       leg->AddEntry(h_target, target_label.c_str(), "l");
       leg->AddEntry(h_truth,  "MC truth (unweighted)", "l");
       leg->AddEntry(h_rw,     "reweighted truth", "l");
+      if (h_data) { leg->AddEntry(h_data, "data (unfolded)", "l"); }
       leg->Draw();
 
       double y = 0.86;
@@ -497,6 +508,7 @@ namespace prior_qa
       c->cd(2);
       TH1D *r_truth = detail::ratio(h_truth, h_target, Form("h_qa_rtruth_%d", id));
       TH1D *r_rw    = detail::ratio(h_rw,    h_target, Form("h_qa_rrw_%d",    id));
+      TH1D *r_data  = h_data ? detail::ratio(h_data, h_target, Form("h_qa_rdata_%d", id)) : nullptr;
       if (!ratio_errors)
       {
         // Across 225 sparse flat bins the propagated errors are metres tall and
@@ -505,6 +517,7 @@ namespace prior_qa
         {
           r_truth->SetBinError(ib, 0.0);
           r_rw   ->SetBinError(ib, 0.0);
+          if (r_data) { r_data->SetBinError(ib, 0.0); }
         }
       }
       dlutility::SetLineAtt(r_truth, kBlue + 1, 2, 2);
@@ -513,6 +526,7 @@ namespace prior_qa
       // drops to zero and swamp the panel the QA is meant to be read from.
       dlutility::SetMarkerAtt(r_truth, kBlue + 1, 0.7, 24);
       dlutility::SetMarkerAtt(r_rw,    kRed + 1,  0.7, 20);
+      if (r_data) { dlutility::SetMarkerAtt(r_data, kGreen + 2, 0.7, 21); }
       r_truth->SetTitle(Form(";%s;X / target", xtitle.c_str()));
       dlutility::SetFont(r_truth, 42, 0.1, 0.1, 0.09, 0.09);
       r_truth->GetYaxis()->SetRangeUser(ratio_min, ratio_max);
@@ -521,6 +535,7 @@ namespace prior_qa
       r_truth->GetXaxis()->SetTitleOffset(1.1);
       r_truth->Draw("p");
       r_rw   ->Draw("p same");
+      if (r_data) { r_data->Draw("p same"); }
 
       TLine *unity = new TLine(r_truth->GetXaxis()->GetXmin(), 1.0,
                                r_truth->GetXaxis()->GetXmax(), 1.0);
@@ -553,10 +568,12 @@ namespace prior_qa
     TH1D *target = (TH1D*) w.target->Clone("h_prior_flat_qa_target");
     TH1D *truth  = (TH1D*) w.truth ->Clone("h_prior_flat_qa_truth");
     TH1D *rw     = (TH1D*) reweighted->Clone("h_prior_flat_qa_rw");
+    TH1D *data   = w.unfold ? (TH1D*) w.unfold->Clone("h_prior_flat_qa_data") : nullptr;
     target->SetDirectory(nullptr); truth->SetDirectory(nullptr); rw->SetDirectory(nullptr);
     target->GetXaxis()->SetRange(1, last);
     truth ->GetXaxis()->SetRange(1, last);
     rw    ->GetXaxis()->SetRange(1, last);
+    if (data) { data->SetDirectory(nullptr); data->GetXaxis()->SetRange(1, last); }
 
     // With kBlendXJ the flat-space target is a REFERENCE, not something the
     // weights are meant to reproduce bin by bin -- say so on the legend so the
@@ -564,11 +581,11 @@ namespace prior_qa
     const std::string target_label = (w.space == kBlendXJ)
       ? "per-bin blend (reference)" : "target prior";
 
-    detail::draw_with_ratio(target, truth, rw,
+    detail::draw_with_ratio(target, truth, rw, data,
                             "flat (#it{p}_{T,1}, #it{p}_{T,2}) truth bin",
                             "normalized counts", captions, outfile,
                             0.0, 2.0, true, 1100, 700, target_label, false);
-    delete target; delete truth; delete rw;
+    delete target; delete truth; delete rw; delete data;
   }
 
   // xJ projection of the same three distributions over one leading-pt window.
@@ -598,14 +615,16 @@ namespace prior_qa
     TH1D *xj_target = project(w.target, "target");
     TH1D *xj_truth  = project(w.truth,  "truth");
     TH1D *xj_rw     = project(reweighted, "rw");
+    TH1D *xj_data   = w.unfold ? project(w.unfold, "data") : nullptr;
 
-    detail::draw_with_ratio(xj_target, xj_truth, xj_rw,
+    detail::draw_with_ratio(xj_target, xj_truth, xj_rw, xj_data,
                             "#it{x}_{J}", "(1/N) dN/d#it{x}_{J}",
                             captions, outfile, 0.0, 2.0, false, 700, 750);
 
     delete xj_target;
     delete xj_truth;
     delete xj_rw;
+    delete xj_data;
   }
 
   // One-line summary of how far the reweighted truth lands from the target.
