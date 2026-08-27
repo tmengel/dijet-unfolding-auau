@@ -2,6 +2,13 @@
 install/
 results/
 archive/
+
+.agents
+.codex
+.claude
+
+external/
+
 # for dstlists
 *.list
 
@@ -46,35 +53,20 @@ build
 *.so
 *.a
 *.d
-# Have editor/IDE/OS specific files you need to ignore? Consider using a global gitignore:
-#
-# * Create a file at ~/.gitignore
-# * Include files you want ignored
-# * Run: git config --global core.excludesfile ~/.gitignore
-#
-# After doing this, these files will be ignored in all your git projects,
-# saving you from having to 'pollute' every project you touch with them
-#
-# For MacOS:
 #
 .DS_Store
 
-# ignore RVM configuration
 .rvmrc
 
-# For TextMate
 *.tmproj
 tmtags
 
-# For emacs:
 *~
 \#*
 .\#*
 
-# For vim:
 *.swp
 
-#for vscode
 .vscode
 ._*
 
@@ -83,8 +75,6 @@ tmtags
 
 # For rubinius:
 *.rbc
-
-# standard C++ Git igore
 
 # Compiled Object files
 *.slo
@@ -122,6 +112,4 @@ logs/
 /.project
 
 
-.agents
-.codex
-external/
+
