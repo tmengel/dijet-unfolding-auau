@@ -52,4 +52,3 @@ subdirs=(
 for subdir in "${subdirs[@]}"; do
   mkdir -p "${DIJET_UNFOLDING_PATH}/${subdir}"
 done
-# mkdir -p "${DIJET_UNFOLDING_PATH}"/{final_plots,final_hists,logs,dphi_plots,response_matrices,rootfiles,systematic_plots,truth_hists,uncertainties,unfolding_hists,unfolding_plots,vertex,centrality,sumeT}

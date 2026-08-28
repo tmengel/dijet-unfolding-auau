@@ -22,37 +22,45 @@
 #include "PlotUtils.h"
 #include "priorReweightQA.h"
 
-// v2 variant of createResponse_exclusive_AA.cxx: reads the pair-level TTree
-// "T" written by dijet_pair_matching.C -- one row per EVENT (not per leg),
-// already carrying a final pair-level category -- instead of the per-leg
-// TTree "T" written by dijet_matching.C. dijet_pair_matching.C classifies
-// each event directly as kFill/kMiss/kFake/kSkip/kUESub (DijetPair::Category
-// in dijet_pair_matching.C, same numeric values as the enum below), building
-// the reco dijet the way the data analysis does -- leading/subleading
-// ACCEPTED reco jets by pT, then the dphi cut -- rather than only ever
-// looking at each truth leg's own dR match, and it separates out UE
-// fluctuations that have taken over a leg (kUESub) instead of silently
-// folding them into Fill or Miss. Since the classification is already
-// pair-level, there is no per-leg combination step here: category is read
-// straight off the row and mapped onto real/miss/fake/skip below, with
-// kUESub skipped alongside kSkip (see the file header comment on kUESub in
-// dijet_pair_matching.C -- those pairs are covered by the subleading-jet
-// efficiency and the inclusive cross-check, so counting them here too would
-// double count them). Everything downstream of that -- reweighting,
-// closure-test split, smearing, the RooUnfoldResponse/histogram fills, the
-// noempty skim, and the closure-test unfold -- is unchanged from
-// createResponse_exclusive_AA.cxx and operates purely on the resulting
-// histograms/response, agnostic to where they came from.
+// v2 variant of createResponse_exclusive_AA_inclusive.cxx: reads the
+// pair-level TTree "T" written by dijet_pair_matching_inclusive.C instead of
+// the per-leg TTree "T" written by dijet_matching_inclusive.C. One row per
+// (event, pair_partner_rank) -- the leading truth jet paired with EVERY
+// other truth jet in the event in turn, (1,2), (1,3), (1,4), ... -- already
+// carrying a final pair-level category, so (as with
+// createResponse_exclusive_v2_AA.cxx versus createResponse_exclusive_AA.cxx)
+// there is no per-leg combination step here: category is read straight off
+// the row. An event with N fiducial truth jets still contributes N-1
+// pairings, each at the same per-event weight (scale_factor[isample], no
+// 1/(N-1) down-weighting) -- unchanged from createResponse_exclusive_AA_inclusive.cxx.
+//
+// dijet_pair_matching_inclusive.C adds a kUESub category on top of
+// dijet_matching_inclusive.C's plain Fill/Miss/Fake/Skip: the leading reco
+// leg is independently rank-selected (not just each truth leg's own dR
+// match), so a UE fluctuation or a softer truth jet holding the leading
+// reco slot is now visible and categorized separately instead of being
+// silently absorbed into Fill. Its leg 2 is still truth-driven, so only
+// LEADING-leg substitution is caught this way (see the file header comment
+// in dijet_pair_matching_inclusive.C) -- but the category is pair-level and
+// self-contained either way. kUESub pairings are skipped alongside kSkip,
+// same as in createResponse_exclusive_v2_AA.cxx, so they are not double
+// counted against the subleading-jet efficiency / inclusive cross-check.
+//
+// Everything else -- reweighting, closure-test split, smearing, the
+// RooUnfoldResponse/histogram fills, the noempty skim, and the
+// closure-test unfold -- is unchanged from createResponse_exclusive_AA_inclusive.cxx
+// and operates purely on the resulting histograms/response, agnostic to
+// where they came from.
 enum DijetPairCategory { kFill = 0, kMiss = 1, kFake = 2, kSkip = 3, kUESub = 4 };
 
-int createResponse_exclusive_v2_AA (
+int createResponse_exclusive_v2_AA_inclusive (
 	const std::string configfile = "binning.config",
 	const int full_or_half = 0,
 	const int niterations = 10,
 	const int cone_size = 4,
 	const int centrality_bin = 0,
 	const int primer = 0,
-	const std::string exclusive_dir = "/home/tmengel/PPG14/rootfiles/out/exclusive_v2"
+	const std::string inclusive_dir = "/home/tmengel/PPG14/rootfiles/out/inclusive_v2"
 )
 {
 
@@ -101,20 +109,9 @@ int createResponse_exclusive_v2_AA (
 	std::string system_string = rb.get_system_string(centrality_bin);
 	std::cout << "System string: " << system_string << std::endl;
 	
-	std::cout << "Using exclusive dijet-matching files in: " << exclusive_dir << std::endl;
+	std::cout << "Using inclusive-pairing dijet-matching files in: " << inclusive_dir << std::endl;
 
-	// Flavor-tagged cross-check (qq vs qg/gg leading-dijet parton origin,
-	// from dijet_matching_flavor.C) -- 0 selects the plain jetNN_scaled.root
-	// files, 1/2 select the qq/qg_gg-suffixed ones written alongside them.
-	// Read once here (used for both the filenames below and sys_name).
-	const int flavor_sys = rb.get_flavor_sys();
-	const std::string flavor_suffix = (flavor_sys == 1) ? "_qq" : (flavor_sys == 2) ? "_qg_gg" : "";
-
-	const std::array<std::string, 3> exclusive_names = {
-		"jet10_scaled" + flavor_suffix + ".root",
-		"jet20_scaled" + flavor_suffix + ".root",
-		"jet30_scaled" + flavor_suffix + ".root"
-	};
+	const std::array<std::string, 3> inclusive_names = { "jet10_scaled.root", "jet20_scaled.root", "jet30_scaled.root" };
 
 	// No per-event "weight" branch in this schema -- event weighting here
 	// comes entirely from the mbd/sumeT/centrality reweighting below, same
@@ -122,21 +119,23 @@ int createResponse_exclusive_v2_AA (
 	float event_weight[3] = {1, 1, 1};
 	bool has_event_weight[3] = {false, false, false};
 
-	// Total processed events per sample (match_standalone.C's raw merged
-	// jetNN_scaled.root entry counts) -- the cross-section scale_factor
-	// denominator below. Hardcoded rather than read from a file: it's
-	// pinned to this specific simulation production, cross-checked against
-	// both the raw merged files directly and by counting event_id
-	// transitions in the derived exclusive tree, and hardcoding it avoids
-	// depending on the (sizeable, and at one point actually corrupted) raw
-	// files just for this one number.
+	// Same total-processed-event denominator as createResponse_exclusive_AA.cxx
+	// (match_standalone.C's raw merged jetNN_scaled.root entry counts):
+	// dijet_matching.C and dijet_matching_inclusive.C read the same merged
+	// file and skip the same events (fewer than 2 truth jets total), they
+	// just pair the survivors differently, so the raw event population --
+	// and this denominator -- is identical between the two. See
+	// createResponse_exclusive_AA.cxx for why it's hardcoded rather than
+	// read from a file.
 	float n_events[3] = { 2892123, 2871303, 2854291 };
 
-	// One row per EVENT (pair-level, not per-leg): truth_pt1/truth_pt2 are
-	// the truth-leading/truth-subleading legs (truth_idx1=0, truth_idx2=1
-	// in dijet_pair_matching.C -- pT-sorted by construction, so
-	// truth_pt1 >= truth_pt2 always), reco_pt1/reco_pt2 the corresponding
-	// selected reco legs, valid only when reco_pair is set.
+	// One row per (event, pair_partner_rank) -- pair-level, not per-leg. An
+	// event with N fiducial truth jets contributes N-1 rows, (1,2) then
+	// (1,3) then (1,4) etc., each independently classified.
+	// truth_pt1/truth_pt2 are the leading truth jet / this pairing's
+	// partner (truth_idx1=0 always; truth_idx2=partner), reco_pt1/reco_pt2
+	// the corresponding selected reco legs, valid only when reco_pair is
+	// set.
 	int   b_cent[3];
 	float b_zvrtx[3];
 	float b_sumeT[3];
@@ -151,7 +150,7 @@ int createResponse_exclusive_v2_AA (
 	TTree * texcl[3];
 	for (int i = 0 ; i < 3; i++)
 	{
-		const std::string path = exclusive_dir + "/" + exclusive_names[i];
+		const std::string path = inclusive_dir + "/" + inclusive_names[i];
 		fin[i] = new TFile(path.c_str(), "READ");
 		if (!fin[i] || fin[i]->IsZombie())
 		{
@@ -318,21 +317,6 @@ int createResponse_exclusive_v2_AA (
 		using_sys = 1;
 		sys_name = "INCLUSIVE";
 	}
-	// Flavor-tagged cross-check (qq vs qg/gg leading-dijet parton origin) --
-	// see dijet_matching_flavor.C. Not a JES/JER-style up/down uncertainty,
-	// so it's deliberately not folded into drawSys_AA.C's total systematic
-	// band; this only needs to pick the right input files (below) and give
-	// the response/unfold chain a distinct, non-colliding output name.
-	if (flavor_sys == 1)
-	{
-		using_sys = 1;
-		sys_name = "QQ";
-	}
-	else if (flavor_sys == 2)
-	{
-		using_sys = 1;
-		sys_name = "QGGG";
-	}
 	if (JER_sys != 0)
 	{
 		using_sys = 1;
@@ -486,18 +470,10 @@ int createResponse_exclusive_v2_AA (
 
 		std::cout << "doing prior" << std::endl;
 
-		// Flavor cross-check (QQ/QGGG): data itself is never flavor-tagged, so
-		// "the data" the flavor-tagged truth should be pulled toward is the
-		// nominal unfolded pt1pt2, not the QQ/QGGG-response-unfolded version of
-		// the same data -- that would just reintroduce the flavor-tagged
-		// response's own migration pattern into the target. The truth below
-		// stays flavor-specific; only the unfold/data target changes.
-		const std::string prior_data_sys_name = (flavor_sys != 0) ? "nominal" : sys_name;
-
-		auto * fun = new TFile(Form("unfolding_hists/unfolding_hists_%s_r%02d_PRIMER2_%s.root", system_string.c_str(), cone_size, prior_data_sys_name.c_str()), "READ");
+		auto * fun = new TFile(Form("unfolding_hists/unfolding_hists_%s_r%02d_PRIMER2_%s.root", system_string.c_str(), cone_size, sys_name.c_str()), "READ");
 		if ( !fun || fun->IsZombie() )
 		{
-			std::cerr << "Missing required unfolding histograms for " << system_string << " "<< prior_data_sys_name << std::endl;
+			std::cerr << "Missing required unfolding histograms for " << system_string << " "<< sys_name << std::endl;
 			return 1;
 		}
 		auto * h_unfold_flat_in = (TH1D*) fun->Get(Form("h_flat_unfold_pt1pt2_%d", prior_iteration)) -> Clone(Form("h_flat_unfold_pt1pt2_%d", prior_iteration));
@@ -643,8 +619,8 @@ int createResponse_exclusive_v2_AA (
 	gRandom->SetSeed(4357);
 	auto * rng = new TRandom(12345);
 	// Unweighted pair-level counts (post sample-boundary/centrality/reweight
-	// cuts), for a quick sanity check against dijet_pair_matching.C's own
-	// Fill/Miss/Fake/Skip/UESub summary.
+	// cuts), for a quick sanity check against dijet_pair_matching_inclusive.C's
+	// own Fill/Miss/Fake/Skip/UESub summary.
 	long n_real[3] = {0, 0, 0};
 	long n_miss[3] = {0, 0, 0};
 	long n_fake[3] = {0, 0, 0};
@@ -828,14 +804,15 @@ int createResponse_exclusive_v2_AA (
 				}
 			}
 
-			// Pair-level status read straight off dijet_pair_matching.C's
-			// `category` -- no cuts are re-derived here, and no per-leg
-			// combination is needed since the classification is already
-			// pair-level (see the file header comment). kUESub pairs are
-			// dropped alongside kSkip: dijet_pair_matching.C's header
-			// explains they are neither a clean Fill, Miss, nor Fake, and
-			// are already covered by the subleading-jet efficiency and the
-			// inclusive cross-check.
+			// Pair-level status read straight off
+			// dijet_pair_matching_inclusive.C's `category` -- no cuts are
+			// re-derived here, and no per-leg combination is needed since
+			// the classification is already pair-level (see the file
+			// header comment). kUESub pairings are dropped alongside
+			// kSkip, same as createResponse_exclusive_v2_AA.cxx: they are
+			// neither a clean Fill, Miss, nor Fake, and counting them here
+			// too would double count against the subleading-jet efficiency
+			// and the inclusive cross-check.
 			const bool skip_pair = (cat0 == kSkip) || (cat0 == kUESub);
 			if ( skip_pair )
 			{
@@ -872,6 +849,7 @@ int createResponse_exclusive_v2_AA (
 				event_scale *= flat_scale;
 			}
 
+
 			if ( miss_pair )
 			{
 				if (use_for_response)
@@ -902,7 +880,7 @@ int createResponse_exclusive_v2_AA (
 				}
 			}
 			
-			if ( fake_pair  )
+			if ( fake_pair ) 
 			{
 			
 				if (use_for_response)
@@ -1206,16 +1184,10 @@ int createResponse_exclusive_v2_AA (
 			for (int iter = 0; iter < niterations; iter++ )
 			{
 		
-				// handleFakes=true: h_flat_reco_skim (the "measured" side of
-				// rooResponsehist) includes fake_pair content that
-				// h_flat_response_skim (built from real_pair only) doesn't,
-				// so RooUnfoldResponse::Setup already computes a non-empty
-				// Fakes histogram (measured - response.ProjectionX()) -- but
-				// RooUnfoldBayes defaults handleFakes to false and silently
-				// unfolds that fake content as if it were signal instead of
-				// excluding it, which grows with iteration count instead of
-				// converging. This was invisible while fake_pair was
-				// permanently disabled (no fakes to mishandle); it isn't now.
+				// handleFakes=true -- see createResponse_exclusive_AA.cxx for
+				// why this must be explicit: RooUnfoldBayes defaults it to
+				// false and silently unfolds fake_pair content as signal
+				// otherwise, which grows with iteration instead of converging.
 				RooUnfoldBayes   unfold (&rooResponsehist, h_flat_reco_to_unfold_skim, iter + 1, false, true);    // OR
 
 				h_flat_unfold_skim[iter] = (TH1D*) unfold.Hunfold();

@@ -205,29 +205,33 @@ namespace DijetPair
             if ( jet_pT.at( j ) > cfg.reco_pt_thresh[1] ) ++r.n_accepted_reco;
         }
 
+        // find leading two reco jets with truth matches
         int r1 = -1, r2 = -1;
-        if ( !accepted.empty() && jet_pT.at( accepted[0] ) > cfg.reco_pt_thresh[0] )
+        if ( !accepted.empty() )
         {
-            r1 = accepted[0];
-            if ( cfg.sublead_back_to_back )
+            int lead_idx = -1;
+            for ( int icurr_lead = 0 ; icurr_lead < static_cast<int>( accepted.size() ); ++icurr_lead )
             {
-                for ( size_t k = 1; k < accepted.size(); ++k )
+                if ( jet_pT.at( accepted[icurr_lead] ) < cfg.reco_pt_thresh[0] ) break; // sorted by pT
+                if ( jet_truth_match_idx.at( accepted[icurr_lead] ) >= 0 )
                 {
-                    const int cand = accepted[k];
-                    if ( !( jet_pT.at( cand ) > cfg.reco_pt_thresh[1] ) ) break; // sorted
-                    if ( AnaUtils::dphi_wrap( jet_phi.at( r1 ), jet_phi.at( cand ) ) > cfg.min_dphi )
-                    {
-                        r2 = cand;
-                        break;
-                    }
+                    r1 = accepted[icurr_lead];
+                    lead_idx = icurr_lead;
+                    break; // lead found
                 }
             }
-            else if ( accepted.size() >= 2
-                      && jet_pT.at( accepted[1] ) > cfg.reco_pt_thresh[1]
-                      && AnaUtils::dphi_wrap( jet_phi.at( r1 ), jet_phi.at( accepted[1] ) ) > cfg.min_dphi )
+            if ( lead_idx < 0 ) r1 = -1; // no valid lead found
+
+            for ( int icurr_sublead = lead_idx + 1; icurr_sublead < static_cast<int>( accepted.size() ); ++icurr_sublead )
             {
-                r2 = accepted[1];
+                if ( jet_pT.at( accepted[icurr_sublead] ) < cfg.reco_pt_thresh[1] ) break; // sorted by pT
+                if ( jet_truth_match_idx.at( accepted[icurr_sublead] ) >= 0 )
+                {
+                    r2 = accepted[icurr_sublead];
+                    break; // sublead found
+                }
             }
+
         }
 
         if ( r1 >= 0 && r2 >= 0 )
@@ -260,14 +264,23 @@ namespace DijetPair
             }
             else
             {
-                // both reco legs must be the two truth legs' own matches;
-                // either ordering counts (a resolution-driven pT swap
-                // between the two real legs is a genuine response entry,
-                // not a UE effect -- legs_swapped records it).
+               
                 const bool same_pair =
-                       ( r.reco_prov[0] == kProvLead && r.reco_prov[1] == kProvSub )
+                    ( r.reco_prov[0] == kProvLead && r.reco_prov[1] == kProvSub )
                     || ( r.reco_prov[0] == kProvSub  && r.reco_prov[1] == kProvLead );
-                r.category = same_pair ? kFill : kUESub;
+                // r.category = same_pair ? kFill : kUESub; // should never happen
+
+                // now check delta phi 
+                const bool in_dphi = r.reco_dphi >= cfg.min_dphi;
+                if ( same_pair && in_dphi )
+                {
+                    r.category = kFill;
+                }
+                else
+                {
+                    r.category = kMiss;
+                }
+                
                 r.legs_swapped = ( same_pair && r.reco_prov[0] == kProvSub ) ? 1 : 0;
             }
         }

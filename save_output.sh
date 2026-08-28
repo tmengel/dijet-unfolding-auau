@@ -19,6 +19,7 @@ this_save="${this_save}_v$(printf '%02d' "$version_tag")"
 mkdir -p "$this_save"
 output_dirs=(
   final_plots
+  final_hists
   dphi_plots
   logs
   closure_results
@@ -36,6 +37,7 @@ output_dirs=(
 )
 
 for dir in "${output_dirs[@]}"; do
-  mkdir -p "$this_save/$dir"
-  cp -r "$input_dir/$dir" "$this_save/$dir"
+  if [[ -d "$input_dir/$dir" ]]; then
+    cp -r "$input_dir/$dir" "$this_save/$dir"
+  fi
 done

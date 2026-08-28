@@ -278,65 +278,65 @@ void makeIterationPlot_AA(const int cone_size = 3, const int centrality_bin = 0,
   double norm_unfold[niterations];
   double norm_sim[niterations];
   for (int iter = 0; iter < niterations; ++iter)
-    {
-      norm_unfold[iter] = safe_integral(h_flat_unfold_pt1pt2[iter]->Integral());
-      norm_sim[iter] = safe_integral(h_pt1pt2_profile_unfold[iter]->Integral());
-    }
+  {
+    norm_unfold[iter] = safe_integral(h_flat_unfold_pt1pt2[iter]->Integral());
+    norm_sim[iter] = safe_integral(h_pt1pt2_profile_unfold[iter]->Integral());
+  }
 
   for (int iter = 0; iter < niterations; ++iter)
-    {
-      Double_t stat_unc = 0;
-      Double_t unfold_unc = 0;
-      Double_t binbybin_unc = 0;
+  {
+    Double_t stat_unc = 0;
+    Double_t unfold_unc = 0;
+    Double_t binbybin_unc = 0;
 
-      Double_t stat_unc_rel = 0;
-      Double_t unfold_unc_rel = 0;
-      Double_t binbybin_unc_rel = 0;
+    Double_t stat_unc_rel = 0;
+    Double_t unfold_unc_rel = 0;
+    Double_t binbybin_unc_rel = 0;
 
-      Double_t stat_unc_norm = 0;
-      Double_t unfold_unc_norm = 0;
-      Double_t binbybin_unc_norm = 0;
+    Double_t stat_unc_norm = 0;
+    Double_t unfold_unc_norm = 0;
+    Double_t binbybin_unc_norm = 0;
 
-      for (int ibin = 0; ibin < nbins_flat; ibin++)
-	{
+    for (int ibin = 0; ibin < nbins_flat; ibin++)
+	  {
 
-	  float bin_cont = h_flat_unfold_pt1pt2[iter]->GetBinContent(ibin+1);
-	  float prev_cont = h_flat_data_pt1pt2->GetBinContent(ibin+1);
+      float bin_cont = h_flat_unfold_pt1pt2[iter]->GetBinContent(ibin+1);
+      float prev_cont = h_flat_data_pt1pt2->GetBinContent(ibin+1);
 
-	  if (iter > 0)
-	    {
-	      prev_cont = h_flat_unfold_pt1pt2[iter - 1]->GetBinContent(ibin+1);
-	    }
+      if (iter > 0)
+        {
+          prev_cont = h_flat_unfold_pt1pt2[iter - 1]->GetBinContent(ibin+1);
+        }
 
-	  if (bin_cont == 0) continue;
+      if (bin_cont == 0) continue;
 
-	  const float unfold_err = h_flat_unfold_pt1pt2[iter]->GetBinError(ibin + 1);
-	  const float sim_err = h_pt1pt2_profile_unfold[iter]->GetBinError(ibin + 1);
-	  const float sim_cont = h_pt1pt2_profile_unfold[iter]->GetBinContent(ibin + 1);
+      const float unfold_err = h_flat_unfold_pt1pt2[iter]->GetBinError(ibin + 1);
+      const float sim_err = h_pt1pt2_profile_unfold[iter]->GetBinError(ibin + 1);
+      const float sim_cont = h_pt1pt2_profile_unfold[iter]->GetBinContent(ibin + 1);
 
-	  // Absolute (not fractional) change: the p_{T,1},p_{T,2} spectrum is
-	  // steeply falling, so relative differences are dominated by the sparse
-	  // high-p_{T} bins. Matches the AA note's unfolding description.
-	  float err1 = fabs(prev_cont - bin_cont);
+      // Absolute (not fractional) change: the p_{T,1},p_{T,2} spectrum is
+      // steeply falling, so relative differences are dominated by the sparse
+      // high-p_{T} bins. Matches the AA note's unfolding description.
+      float err1 = fabs(prev_cont - bin_cont);
 
-	  binbybin_unc += TMath::Power(err1,2);
-	  stat_unc+= TMath::Power(sim_err, 2);
-	  unfold_unc+= TMath::Power(unfold_err, 2);
+      binbybin_unc += TMath::Power(err1,2);
+      stat_unc+= TMath::Power(sim_err, 2);
+      unfold_unc+= TMath::Power(unfold_err, 2);
 
-	  // Fractional counterpart, for the comparison panel only.
-	  binbybin_unc_rel += TMath::Power(err1/bin_cont, 2);
-	  unfold_unc_rel += TMath::Power(unfold_err/bin_cont, 2);
-	  if (sim_cont != 0) stat_unc_rel += TMath::Power(sim_err/sim_cont, 2);
+      // Fractional counterpart, for the comparison panel only.
+      binbybin_unc_rel += TMath::Power(err1/bin_cont, 2);
+      unfold_unc_rel += TMath::Power(unfold_err/bin_cont, 2);
+      if (sim_cont != 0) stat_unc_rel += TMath::Power(sim_err/sim_cont, 2);
 
-	  // Normalised counterpart: absolute change of the unit-integral
-	  // distributions, i.e. the note's definition.
-	  const float bin_cont_norm = bin_cont/norm_unfold[iter];
-	  const float prev_cont_norm = (iter > 0) ? prev_cont/norm_unfold[iter - 1]
-	                                          : prev_cont/norm_data;
-	  binbybin_unc_norm += TMath::Power(prev_cont_norm - bin_cont_norm, 2);
-	  unfold_unc_norm += TMath::Power(unfold_err/norm_unfold[iter], 2);
-	  stat_unc_norm += TMath::Power(sim_err/norm_sim[iter], 2);
-	}
+      // Normalised counterpart: absolute change of the unit-integral
+      // distributions, i.e. the note's definition.
+      const float bin_cont_norm = bin_cont/norm_unfold[iter];
+      const float prev_cont_norm = (iter > 0) ? prev_cont/norm_unfold[iter - 1]
+                                              : prev_cont/norm_data;
+      binbybin_unc_norm += TMath::Power(prev_cont_norm - bin_cont_norm, 2);
+      unfold_unc_norm += TMath::Power(unfold_err/norm_unfold[iter], 2);
+      stat_unc_norm += TMath::Power(sim_err/norm_sim[iter], 2);
+    }
 
       std::cout << stat_unc << " + " << unfold_unc <<" + " << binbybin_unc << " = " <<  sqrt(stat_unc + unfold_unc + binbybin_unc) << std::endl;
 

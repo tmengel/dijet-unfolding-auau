@@ -37,5 +37,6 @@ bash run_flavor_sys_AA_exclusive.sh "${conesize}" "${cent}" qg_gg
 
 log "=== comparison plot: qq vs qg_gg vs nominal unfolded x_J ==="
 root -l -q -b "compareFlavorXj_AA.C(${conesize}, ${cent}, \"${AUAU_CONFIG}\", ${niter})"
+root -l -q -b "drawPriorQA_xj_flavorCompare_AA.C(${conesize}, ${cent}, \"${AUAU_CONFIG}\")"
 
 log "=== done ==="
