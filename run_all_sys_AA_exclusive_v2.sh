@@ -13,7 +13,7 @@ echo "OPTION_A_SETTINGS=${OPTION_A_SETTINGS}"
 # calls (primer1, primer2, nominal), pointed at the per-leg exclusive TTree
 # instead of the tn_match TNtuple. See createResponse_exclusive_AA.cxx's
 # file header for why the response-building logic differs.
-exclusive_dir="${EXCLUSIVE_DIR:-/home/tmengel/PPG14/rootfiles/out/exclusive_v2}"
+exclusive_dir="${EXCLUSIVE_DIR:-/home/tmengel/PPG14/rootfiles/dijet_match_08_31_2026/exclusive}"
 
 conesize=$1
 cent=$2

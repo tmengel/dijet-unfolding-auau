@@ -110,7 +110,11 @@ public:
   Int_t get_herwig(){ return penv->GetValue("HERWIG", 0); }
   
   Int_t get_inclusive_sys(){ return penv->GetValue("INCLUSIVE", 0); }
-  Int_t get_flavor_sys(){ return penv->GetValue("FLAVOR", 0); }  // 0 = none, 1 = qq, 2 = qg/gg
+  Int_t get_flavor_sys(){ return penv->GetValue("FLAVOR", 0); }  // 0 = none, 1 = qq, 2 = qg/gg, 3 = qq/qg+gg mix
+  // Target QQ share (by cross-section-weighted yield, not raw entries) of the
+  // response when FLAVOR == 3; the remainder (1 - this) is qg/gg. Unused for
+  // FLAVOR == 0/1/2.
+  Double_t get_flavor_qq_fraction(){ return penv->GetValue("FLAVOR_QQ_FRAC", 0.5); }
   Double_t get_jes_sys(){ return penv->GetValue("JES", 0.0); }
   Double_t get_jer_sys(){ return penv->GetValue("JER", 0.0); }
   Double_t get_first_xj(){ return penv->GetValue("first_xj", 0.0); }

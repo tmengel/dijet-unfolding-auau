@@ -46,12 +46,19 @@
 // same as in createResponse_exclusive_v2_AA.cxx, so they are not double
 // counted against the subleading-jet efficiency / inclusive cross-check.
 //
+// dijet_pair_matching_inclusive_v2.C also adds kFakeMiss: truth pair in
+// acceptance and a reco dijet candidate in acceptance, but the candidate is
+// not the truth pair's own matches -- simultaneously a miss (the truth
+// dijet) and a fake (that reco dijet), same semantics and same treatment as
+// createResponse_exclusive_v2_AA.cxx: it counts toward both miss_pair and
+// fake_pair below.
+//
 // Everything else -- reweighting, closure-test split, smearing, the
 // RooUnfoldResponse/histogram fills, the noempty skim, and the
 // closure-test unfold -- is unchanged from createResponse_exclusive_AA_inclusive.cxx
 // and operates purely on the resulting histograms/response, agnostic to
 // where they came from.
-enum DijetPairCategory { kFill = 0, kMiss = 1, kFake = 2, kSkip = 3, kUESub = 4 };
+enum DijetPairCategory { kFill = 0, kMiss = 1, kFake = 2, kSkip = 3, kUESub = 4, kFakeMiss = 5 };
 
 int createResponse_exclusive_v2_AA_inclusive (
 	const std::string configfile = "binning.config",
@@ -60,7 +67,7 @@ int createResponse_exclusive_v2_AA_inclusive (
 	const int cone_size = 4,
 	const int centrality_bin = 0,
 	const int primer = 0,
-	const std::string inclusive_dir = "/home/tmengel/PPG14/rootfiles/out/inclusive_v2"
+	const std::string inclusive_dir = "/home/tmengel/PPG14/rootfiles/dijet_match_08_31_2026/inclusive"
 )
 {
 
@@ -821,8 +828,8 @@ int createResponse_exclusive_v2_AA_inclusive (
 				continue;
 			}
 
-			const bool miss_pair  = (cat0 == kMiss);
-			const bool fake_pair  = (cat0 == kFake);
+			const bool miss_pair  = (cat0 == kMiss) || ( cat0 == kFakeMiss );
+			const bool fake_pair  = (cat0 == kFake) || ( cat0 == kFakeMiss );
 			const bool real_pair  = (cat0 == kFill);
 
 			if (miss_pair) { ++n_miss[isample]; }

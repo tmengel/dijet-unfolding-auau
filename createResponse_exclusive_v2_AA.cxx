@@ -43,7 +43,7 @@
 // noempty skim, and the closure-test unfold -- is unchanged from
 // createResponse_exclusive_AA.cxx and operates purely on the resulting
 // histograms/response, agnostic to where they came from.
-enum DijetPairCategory { kFill = 0, kMiss = 1, kFake = 2, kSkip = 3, kUESub = 4 };
+enum DijetPairCategory { kFill = 0, kMiss = 1, kFake = 2, kSkip = 3, kUESub = 4 , kFakeMiss = 5 };
 
 int createResponse_exclusive_v2_AA (
 	const std::string configfile = "binning.config",
@@ -52,7 +52,7 @@ int createResponse_exclusive_v2_AA (
 	const int cone_size = 4,
 	const int centrality_bin = 0,
 	const int primer = 0,
-	const std::string exclusive_dir = "/home/tmengel/PPG14/rootfiles/out/exclusive_v2"
+	const std::string exclusive_dir = "/home/tmengel/PPG14/rootfiles/dijet_match_08_31_2026/exclusive"
 )
 {
 
@@ -105,16 +105,44 @@ int createResponse_exclusive_v2_AA (
 
 	// Flavor-tagged cross-check (qq vs qg/gg leading-dijet parton origin,
 	// from dijet_matching_flavor.C) -- 0 selects the plain jetNN_scaled.root
-	// files, 1/2 select the qq/qg_gg-suffixed ones written alongside them.
+	// files, 1/2 select the qq/qg_gg-suffixed ones written alongside them, 3
+	// mixes both flavor files into one response at a controlled QQ share
+	// (see get_flavor_qq_fraction() / the normalization pre-pass below).
 	// Read once here (used for both the filenames below and sys_name).
 	const int flavor_sys = rb.get_flavor_sys();
+	const bool flavor_mix = (flavor_sys == 3);
+	const double flavor_qq_fraction = rb.get_flavor_qq_fraction();
 	const std::string flavor_suffix = (flavor_sys == 1) ? "_qq" : (flavor_sys == 2) ? "_qg_gg" : "";
 
-	const std::array<std::string, 3> exclusive_names = {
-		"jet10_scaled" + flavor_suffix + ".root",
-		"jet20_scaled" + flavor_suffix + ".root",
-		"jet30_scaled" + flavor_suffix + ".root"
-	};
+	// Every other mode reads one flavor stream per pT sample (3 streams,
+	// stream index == pT-sample index, matching every array below
+	// historically). Mix mode instead reads BOTH flavor-tagged files for
+	// each of the 3 pT samples (6 streams): streams [0..2] are the qq side
+	// and [3..5] the qg/gg side of the same 3 pT samples. stream_sample[]
+	// maps a stream back to its pT sample (for n_events/scale_factor and
+	// the QA histograms below, which stay indexed by pT sample) and
+	// stream_is_qq[] to its flavor (for the normalization pre-pass).
+	const int n_streams = flavor_mix ? 6 : 3;
+	const int stream_sample[6] = {0, 1, 2, 0, 1, 2};
+	const bool stream_is_qq[6]  = {true, true, true, false, false, false};
+
+	std::array<std::string, 6> exclusive_names;
+	if (flavor_mix)
+	{
+		exclusive_names = {
+			"jet10_scaled_qq.root", "jet20_scaled_qq.root", "jet30_scaled_qq.root",
+			"jet10_scaled_qg_gg.root", "jet20_scaled_qg_gg.root", "jet30_scaled_qg_gg.root"
+		};
+	}
+	else
+	{
+		exclusive_names = {
+			"jet10_scaled" + flavor_suffix + ".root",
+			"jet20_scaled" + flavor_suffix + ".root",
+			"jet30_scaled" + flavor_suffix + ".root",
+			"", "", ""
+		};
+	}
 
 	// No per-event "weight" branch in this schema -- event weighting here
 	// comes entirely from the mbd/sumeT/centrality reweighting below, same
@@ -136,20 +164,21 @@ int createResponse_exclusive_v2_AA (
 	// the truth-leading/truth-subleading legs (truth_idx1=0, truth_idx2=1
 	// in dijet_pair_matching.C -- pT-sorted by construction, so
 	// truth_pt1 >= truth_pt2 always), reco_pt1/reco_pt2 the corresponding
-	// selected reco legs, valid only when reco_pair is set.
-	int   b_cent[3];
-	float b_zvrtx[3];
-	float b_sumeT[3];
-	int   b_category[3];
-	int   b_reco_pair[3];
-	float b_truth_pt1[3];
-	float b_truth_pt2[3];
-	float b_reco_pt1[3];
-	float b_reco_pt2[3];
+	// selected reco legs, valid only when reco_pair is set. Sized for the
+	// mix-mode 6-stream case; non-mix modes only ever touch indices [0..2].
+	int   b_cent[6];
+	float b_zvrtx[6];
+	float b_sumeT[6];
+	int   b_category[6];
+	int   b_reco_pair[6];
+	float b_truth_pt1[6];
+	float b_truth_pt2[6];
+	float b_reco_pt1[6];
+	float b_reco_pt2[6];
 
-	TFile * fin[3];
-	TTree * texcl[3];
-	for (int i = 0 ; i < 3; i++)
+	TFile * fin[6];
+	TTree * texcl[6];
+	for (int i = 0 ; i < n_streams; i++)
 	{
 		const std::string path = exclusive_dir + "/" + exclusive_names[i];
 		fin[i] = new TFile(path.c_str(), "READ");
@@ -332,6 +361,13 @@ int createResponse_exclusive_v2_AA (
 	{
 		using_sys = 1;
 		sys_name = "QGGG";
+	}
+	else if (flavor_sys == 3)
+	{
+		using_sys = 1;
+		// Percent-QQ tag so e.g. 0.5 and 0.2 land on distinct, non-colliding
+		// response/unfold/QA output names (MIX50, MIX20, ...).
+		sys_name = Form("MIX%02d", (int) std::lround(flavor_qq_fraction * 100.0));
 	}
 	if (JER_sys != 0)
 	{
@@ -636,6 +672,60 @@ int createResponse_exclusive_v2_AA (
 	}
 
 
+	// Mix-mode normalization: the two flavor streams for the same pT sample
+	// are disjoint subsets of the same underlying MC and share scale_factor[]
+	// -- but Pythia+HIJING doesn't hand out QQ vs QG+GG leading-dijet-flavor
+	// events in any controlled ratio, so hitting an exact target QQ share of
+	// the response's cross-section-weighted yield needs one extra factor per
+	// flavor. This is a fast pre-pass over the same trees (same in-range /
+	// non-Skip/UESub cuts the main loop below applies, no smearing or
+	// histogram fills) that sums each flavor's raw weighted yield across all
+	// 3 pT samples, then solves for the two factors that (a) hit
+	// flavor_qq_fraction exactly and (b) together reproduce the same total
+	// yield as summing both flavors unweighted -- so e.g. MIX50 sits at the
+	// same absolute scale as combining the QQ-only and QGGG-only samples,
+	// not an arbitrarily rescaled one.
+	double extra_scale[6] = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+	if (flavor_mix)
+	{
+		double yield_qq = 0.0;
+		double yield_qg_gg = 0.0;
+		for (int istream = 0; istream < n_streams; istream++)
+		{
+			const int isample = stream_sample[istream];
+			const Long64_t entries_norm = texcl[istream]->GetEntries();
+			double stream_yield = 0.0;
+			for (Long64_t i = 0; i < entries_norm; i++)
+			{
+				texcl[istream] -> GetEntry(i);
+				const int cat0 = b_category[istream];
+				if (cat0 == kSkip || cat0 == kUESub) { continue; }
+				const float truth_pt0 = b_truth_pt1[istream];
+				if ( !(truth_pt0 >= sample_boundary[isample] && truth_pt0 < sample_boundary[isample+1]) ) { continue; }
+				stream_yield += scale_factor[isample];
+			}
+			if (stream_is_qq[istream]) { yield_qq += stream_yield; } else { yield_qg_gg += stream_yield; }
+		}
+		std::cout << "Flavor mix normalization -- raw weighted yield: QQ = " << yield_qq
+		          << ", QG+GG = " << yield_qg_gg << std::endl;
+		if ( !(yield_qq > 0.0) || !(yield_qg_gg > 0.0) )
+		{
+			std::cerr << "Flavor mix requested (QQ fraction " << flavor_qq_fraction
+			          << ") but one flavor has zero weighted yield in this centrality/cone-size bin -- cannot mix."
+			          << std::endl;
+			return 1;
+		}
+		const double yield_total = yield_qq + yield_qg_gg;
+		const double scale_qq = flavor_qq_fraction * yield_total / yield_qq;
+		const double scale_qg_gg = (1.0 - flavor_qq_fraction) * yield_total / yield_qg_gg;
+		std::cout << "Flavor mix target QQ fraction " << flavor_qq_fraction
+		          << " -> extra per-event scale: QQ x" << scale_qq << ", QG+GG x" << scale_qg_gg << std::endl;
+		for (int istream = 0; istream < n_streams; istream++)
+		{
+			extra_scale[istream] = stream_is_qq[istream] ? scale_qq : scale_qg_gg;
+		}
+	}
+
 	// Fixed seeds: gRandom drives smear_random() — 4357 is ROOT's
 	// TRandom3 default, pinned here so nominal/systematic chains stay event-aligned
 	// (common random numbers) even if ROOT's default changes. rng drives only the
@@ -650,30 +740,31 @@ int createResponse_exclusive_v2_AA (
 	long n_fake[3] = {0, 0, 0};
 	long n_skip[3] = {0, 0, 0};
 	long n_uesub[3] = {0, 0, 0};
-  	for (int isample = 0; isample < 3; isample++)
+  	for (int istream = 0; istream < n_streams; istream++)
     {
-		const Long64_t entries2 = texcl[isample]->GetEntries();
+		const int isample = stream_sample[istream];
+		const Long64_t entries2 = texcl[istream]->GetEntries();
 		const Long64_t print_every = (entries2/10 > 0) ? entries2/10 : 1;
 
 		for (Long64_t i = 0; i < entries2; i++)
 		{
-			texcl[isample] -> GetEntry(i);
-			const int cat0 = b_category[isample];
-			const float truth_pt0 = b_truth_pt1[isample];
-			const float truth_pt1 = b_truth_pt2[isample];
-			const bool has_reco_pair = ( b_reco_pair[isample] != 0 );
-			const float reco_pt0 = has_reco_pair ? b_reco_pt1[isample] : 0.0F;
-			const float reco_pt1 = has_reco_pair ? b_reco_pt2[isample] : 0.0F;
-			const int cent_val = b_cent[isample];
-			const float zvrtx_val = b_zvrtx[isample];
-			const float sumeT_val = b_sumeT[isample];
+			texcl[istream] -> GetEntry(i);
+			const int cat0 = b_category[istream];
+			const float truth_pt0 = b_truth_pt1[istream];
+			const float truth_pt1 = b_truth_pt2[istream];
+			const bool has_reco_pair = ( b_reco_pair[istream] != 0 );
+			const float reco_pt0 = has_reco_pair ? b_reco_pt1[istream] : 0.0F;
+			const float reco_pt1 = has_reco_pair ? b_reco_pt2[istream] : 0.0F;
+			const int cent_val = b_cent[istream];
+			const float zvrtx_val = b_zvrtx[istream];
+			const float sumeT_val = b_sumeT[istream];
 
 			if ( i % print_every == 0 )
 			{
-				std::cout << "Sample " << isample << " : " << i << " / " << entries2 << "\r" << std::flush;
+				std::cout << "Sample " << isample << " (stream " << istream << ") : " << i << " / " << entries2 << "\r" << std::flush;
 			}
 
-			double event_scale 			= scale_factor[isample];
+			double event_scale 			= scale_factor[isample] * extra_scale[istream];
 			double mbd_vertex_scale 	= 1.0;
 			double sumeT_scale 			= 1.0;
 			double centrality_scale 	= 1.0;
@@ -844,8 +935,8 @@ int createResponse_exclusive_v2_AA (
 				continue;
 			}
 
-			const bool miss_pair  = (cat0 == kMiss);
-			const bool fake_pair  = (cat0 == kFake);
+			const bool miss_pair  = (cat0 == kMiss) || ( cat0 == kFakeMiss );
+			const bool fake_pair  = (cat0 == kFake) || ( cat0 == kFakeMiss );
 			const bool real_pair  = (cat0 == kFill);
 
 			if (miss_pair) { ++n_miss[isample]; }

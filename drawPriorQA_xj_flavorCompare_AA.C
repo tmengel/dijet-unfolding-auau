@@ -21,19 +21,26 @@
 #include "read_binning.h"
 
 // Standalone comparison macro: reproduces compareFlavorXj_AA.C's inclusive
-// x_J overlay of the nominal/qq/qg-gg unfolded data (top pad, data unfolded
-// each with its own flavor-tagged response; bottom pad, flavor/nominal
-// ratio) and additionally overlays, for qq and qg/gg, the prior_qa MC truth
-// (unreweighted) and prior-reweighted truth built to match the nominal
-// unfolded data -- the same reweighting target used by
-// createResponse_exclusive_v2_AA.cxx (prior_data_sys_name), since the data
-// itself carries no flavor tag. Reads the same cached
+// x_J overlay of the nominal/qq/qg-gg/mix unfolded data (top pad, data
+// unfolded each with its own flavor-tagged response; bottom pad,
+// flavor/nominal ratio) and additionally overlays, for each flavor
+// selection, the prior_qa MC truth (unreweighted) and prior-reweighted
+// truth built to match the nominal unfolded data -- the same reweighting
+// target used by createResponse_exclusive_v2_AA.cxx (prior_data_sys_name),
+// since the data itself carries no flavor tag. Reads the same cached
 // response_matrices/unfolding_hists ROOT files that
 // createResponse_exclusive_v2_AA.cxx / unfoldData_noempty_AA.cxx /
 // compareFlavorXj_AA.C already use (primer-less, i.e. the actual production
 // unfold, not the primer1/primer2 QA passes) and reruns only the (cheap)
 // prior_qa blend/apply/project steps -- it does not touch or rerun any
 // existing macro. Read-only relative to everything already on disk.
+//
+// The flavor selections plotted (QQ, QGGG, and the MIX66/MIX80 qq/qg+gg-mix
+// cross-check at 66%/80% QQ share -- see run_flavor_sys_AA_exclusive.sh's
+// "mix" mode) live in the `selections` array below; add/remove entries
+// there to change what this overlay shows. Everything downstream (top-pad
+// data + truth curves, per-selection legends, bottom-pad ratio) loops over
+// that array and does not need to change.
 namespace
 {
 // Mirrors the "project" lambda inside prior_qa::draw_xj / compareFlavorXj_AA.C's
@@ -135,44 +142,66 @@ void drawPriorQA_xj_flavorCompare_AA(
   // serves as the prior_qa reweighting target below, since the data itself
   // carries no flavor tag.
   std::unique_ptr<TH1D> unfoldNominal(loadUnfoldedFlat(location, system, cone_size, "nominal", niter));
-  std::unique_ptr<TH1D> unfoldQQ(loadUnfoldedFlat(location, system, cone_size, "QQ", niter));
-  std::unique_ptr<TH1D> unfoldQGGG(loadUnfoldedFlat(location, system, cone_size, "QGGG", niter));
-  if (!unfoldNominal || !unfoldQQ || !unfoldQGGG)
+  if (!unfoldNominal)
     {
-      std::cerr << "drawPriorQA_xj_flavorCompare_AA: missing at least one required "
-                << "unfolded x_J input, aborting." << std::endl;
+      std::cerr << "drawPriorQA_xj_flavorCompare_AA: missing required unfolded x_J input "
+                << "nominal, aborting." << std::endl;
       return;
     }
-
   std::unique_ptr<TH1D> hNom(projectToXj(unfoldNominal.get(), nbins, ptBins.get(), xjBins.get(),
                                          leadLo, leadHi, subLo, subHi, "h_xj_unfold_nominal"));
-  std::unique_ptr<TH1D> hQQ(projectToXj(unfoldQQ.get(), nbins, ptBins.get(), xjBins.get(),
-                                        leadLo, leadHi, subLo, subHi, "h_xj_unfold_QQ"));
-  std::unique_ptr<TH1D> hQGGG(projectToXj(unfoldQGGG.get(), nbins, ptBins.get(), xjBins.get(),
-                                          leadLo, leadHi, subLo, subHi, "h_xj_unfold_QGGG"));
-
   dlutility::SetMarkerAtt(hNom.get(), kBlack, 1.1, 20);
-  dlutility::SetMarkerAtt(hQQ.get(), kRed + 1, 1.1, 21);
-  dlutility::SetMarkerAtt(hQGGG.get(), kAzure - 6, 1.1, 22);
   dlutility::SetFont(hNom.get(), 42, 0.05, 0.045, 0.045, 0.045);
 
   // dataOffset shifts each flavor's data series by a fraction of the bin
-  // width, away from nominal, so the two points that can otherwise coincide
-  // at a given x_J bin fan out into a readable pair instead of stacking on
-  // top of each other.
+  // width, away from nominal, so series that can otherwise coincide at a
+  // given x_J bin fan out into a readable set instead of stacking on top of
+  // each other. Colors/markers match compareFlavorXj_AA.C's `flavors` array
+  // so the two cross-check plots read consistently.
   struct Selection
   {
     std::string sys; std::string label; TH1D *data; int color;
     int dataMarker; double dataOffset;
   };
-  const std::array<Selection, 2> selections = {
-    Selection{"QQ",   "qq dijets",    hQQ.get(),   kRed + 1,   21, -0.15},
-    Selection{"QGGG", "qg/gg dijets", hQGGG.get(), kAzure - 6, 22, +0.15}
+  struct FlavorSpec { std::string sys; std::string label; int color; int marker; double offset; };
+  const std::array<FlavorSpec, 4> flavorSpecs = {
+    FlavorSpec{"QQ",    "qq response",         kRed + 1,    21, -0.225},
+    FlavorSpec{"QGGG",  "qg/gg response",       kAzure - 6,  22, -0.075},
+    FlavorSpec{"MIX66", "66% qq response",      kGreen + 2,  23, +0.075},
+    FlavorSpec{"MIX80", "80% qq response",      kOrange + 7, 33, +0.225}
   };
+
+  std::vector<std::unique_ptr<TH1D>> unfoldFlavors;
+  std::vector<std::unique_ptr<TH1D>> hFlavors;
+  std::vector<Selection> selections;
+  for (const FlavorSpec &spec : flavorSpecs)
+    {
+      std::unique_ptr<TH1D> unfoldFlavor(loadUnfoldedFlat(location, system, cone_size, spec.sys, niter));
+      if (!unfoldFlavor)
+        {
+          std::cerr << "drawPriorQA_xj_flavorCompare_AA: missing required unfolded x_J input "
+                    << spec.sys << ", aborting." << std::endl;
+          return;
+        }
+      std::unique_ptr<TH1D> hFlavor(projectToXj(unfoldFlavor.get(), nbins, ptBins.get(), xjBins.get(),
+                                                leadLo, leadHi, subLo, subHi,
+                                                Form("h_xj_unfold_%s", spec.sys.c_str())));
+      dlutility::SetMarkerAtt(hFlavor.get(), spec.color, 1.1, spec.marker);
+
+      selections.push_back(Selection{spec.sys, spec.label, hFlavor.get(), spec.color, spec.marker, spec.offset});
+      unfoldFlavors.push_back(std::move(unfoldFlavor));
+      hFlavors.push_back(std::move(hFlavor));
+    }
 
   std::vector<std::unique_ptr<TH1D>> truthHistograms;
   std::vector<std::unique_ptr<TH1D>> reweightedHistograms;
   std::vector<std::unique_ptr<TGraphErrors>> dataGraphs;
+  // Parallel to truthHistograms/reweightedHistograms/dataGraphs, NOT to
+  // `selections` -- a selection whose PRIMER2 truth file is missing is
+  // skipped (see the `continue`s below) without pushing anything into any
+  // of the four, so index i always refers to the same selection across all
+  // four vectors even when the counts run short of selections.size().
+  std::vector<Selection> matchedSelections;
 
   for (const Selection &selection : selections)
     {
@@ -210,7 +239,7 @@ void drawPriorQA_xj_flavorCompare_AA(
         weights.truth, weights.weight, nbins,
         "h_prior_reweighted_truth_" + selection.sys));
 
-      // Same lead/sub range as hNom/hQQ/hQGGG above so the overlay is a
+      // Same lead/sub range as hNom/hFlavors above so the overlay is a
       // like-for-like comparison to the plotted data.
       std::unique_ptr<TH1D> truthXj(projectToXj(
         weights.truth, nbins, ptBins.get(), xjBins.get(), leadLo, leadHi,
@@ -233,6 +262,7 @@ void drawPriorQA_xj_flavorCompare_AA(
       truthHistograms.push_back(std::move(truthXj));
       reweightedHistograms.push_back(std::move(reweightedXj));
       dataGraphs.push_back(std::move(dataGraph));
+      matchedSelections.push_back(selection);
     }
 
   TCanvas *c = new TCanvas("cFlavorXjPriorQA", "cFlavorXjPriorQA", 650, 750);
@@ -245,7 +275,9 @@ void drawPriorQA_xj_flavorCompare_AA(
   p2->Draw();
 
   p1->cd();
-  double maximum = std::max({hNom->GetMaximum(), hQQ->GetMaximum(), hQGGG->GetMaximum()});
+  double maximum = hNom->GetMaximum();
+  for (const auto &h : hFlavors)
+    maximum = std::max(maximum, h->GetMaximum());
   for (const auto &histogram : truthHistograms)
     maximum = std::max(maximum, histogram->GetMaximum());
   for (const auto &histogram : reweightedHistograms)
@@ -273,38 +305,35 @@ void drawPriorQA_xj_flavorCompare_AA(
   for (const auto &graph : dataGraphs)
     graph->Draw("P SAME");
 
-  TLegend legNom(0.18, 0.79, 0.4, 0.89);
+  TLegend legNom(0.18, 0.79, 0.36, 0.89);
   legNom.SetBorderSize(0);
   legNom.SetFillStyle(0);
-  legNom.SetTextSize(0.032);
+  legNom.SetTextSize(0.028);
   legNom.AddEntry(nomGraph.get(), "Nominal", "pe");
-  legNom.AddEntry(dataGraphs[0].get(), "qq response", "pe");
-  legNom.AddEntry(dataGraphs[1].get(), "qg & gg response", "pe");
+  for (std::size_t i = 0; i < dataGraphs.size(); i++)
+    legNom.AddEntry(dataGraphs[i].get(), matchedSelections[i].label.c_str(), "pe");
   legNom.Draw();
 
-  TLegend legQQ(0.45, 0.79, 0.6, 0.89);
-  legQQ.SetBorderSize(0);
-  legQQ.SetFillStyle(0);
-  legQQ.SetTextSize(0.032);
-  legQQ.SetHeader("qq response");
-
-  TLegend legQGGG(0.7, 0.79, 0.85, 0.89);
-  legQGGG.SetBorderSize(0);
-  legQGGG.SetFillStyle(0);
-  legQGGG.SetTextSize(0.032);
-  legQGGG.SetHeader("qg/gg response");
-
-
-
-  std::array<TLegend *, 2> flavorLegends = {&legQQ, &legQGGG};
-  for (std::size_t i = 0; i < truthHistograms.size(); i++)
+  // One small per-selection legend (header + Unweighted/Reweighted truth
+  // entries), laid out left-to-right across the pad width to the right of
+  // legNom -- as many boxes as selections that actually had a PRIMER2 truth
+  // file to plot (matchedSelections, not the full requested `selections`).
+  std::vector<std::unique_ptr<TLegend>> flavorLegends;
+  const double legX0 = 0.38, legX1 = 0.98, legY0 = 0.79, legY1 = 0.89;
+  const std::size_t nFlavorLeg = matchedSelections.size();
+  const double legWidth = nFlavorLeg ? (legX1 - legX0) / nFlavorLeg : 0.0;
+  for (std::size_t i = 0; i < nFlavorLeg; i++)
     {
-      // flavorLegends[i]->AddEntry(dataGraphs[i].get(), "Unfolded w/ response", "pe");
-      flavorLegends[i]->AddEntry(truthHistograms[i].get(), "Unweighted Truth", "l");
-      flavorLegends[i]->AddEntry(reweightedHistograms[i].get(), "Reweighted Truth", "l");
+      auto leg = std::make_unique<TLegend>(legX0 + i*legWidth, legY0, legX0 + (i + 1)*legWidth - 0.01, legY1);
+      leg->SetBorderSize(0);
+      leg->SetFillStyle(0);
+      leg->SetTextSize(0.026);
+      leg->SetHeader(matchedSelections[i].label.c_str());
+      leg->AddEntry(truthHistograms[i].get(), "Unweighted Truth", "l");
+      leg->AddEntry(reweightedHistograms[i].get(), "Reweighted Truth", "l");
+      leg->Draw();
+      flavorLegends.push_back(std::move(leg));
     }
-  legQQ.Draw();
-  legQGGG.Draw();
 
   // std::string cent_str = "";
   // centrality_bin
@@ -312,30 +341,39 @@ void drawPriorQA_xj_flavorCompare_AA(
   PlotUtils::myText(0.55, 0.1,kBlack, Form("%s, R=0.%d, iter %d", cent_str.c_str(), cone_size, niter), 0.04);
 
   p2->cd();
-  std::unique_ptr<TH1D> rQQ(dynamic_cast<TH1D*>(hQQ->Clone("r_qq")));
-  rQQ->Divide(hNom.get());
-  std::unique_ptr<TH1D> rQGGG(dynamic_cast<TH1D*>(hQGGG->Clone("r_qggg")));
-  rQGGG->Divide(hNom.get());
+  // Keyed by the full `selections` (and hFlavors), not matchedSelections --
+  // the ratio pad only needs each flavor's own unfolded data vs. nominal,
+  // which doesn't depend on whether that selection's PRIMER2 truth file
+  // (used only for the top-pad truth/reweighted curves) was found.
+  std::vector<std::unique_ptr<TH1D>> ratioHistograms;
+  std::vector<std::unique_ptr<TGraphErrors>> ratioGraphs;
+  for (std::size_t i = 0; i < selections.size(); i++)
+    {
+      std::unique_ptr<TH1D> r(dynamic_cast<TH1D*>(hFlavors[i]->Clone(Form("r_%s", selections[i].sys.c_str()))));
+      r->Divide(hNom.get());
+      if (i == 0)
+        {
+          r->SetTitle(";x_{J};Unfolded w/ Response / Nominal");
+          r->GetYaxis()->SetTitleOffset(1.2);
+          r->SetMinimum(0.5);
+          r->SetMaximum(1.5);
+          r->GetXaxis()->SetRangeUser(xjPlotMin, xjBins[nbins]);
+          dlutility::SetFont(r.get(), 42, 0.09, 0.08, 0.08, 0.08);
+          r->Draw("axis");
+        }
 
-  rQQ->SetTitle(";x_{J};Unfolded w/ Response / Nominal");
-  rQQ->GetYaxis()->SetTitleOffset(1.2);
-  rQQ->SetMinimum(0.5);
-  rQQ->SetMaximum(1.5);
-  rQQ->GetXaxis()->SetRangeUser(xjPlotMin, xjBins[nbins]);
-  dlutility::SetFont(rQQ.get(), 42, 0.09, 0.08, 0.08, 0.08);
-  rQQ->Draw("axis");
+      // TH1's "P" draws a horizontal tick spanning the full bin width
+      // regardless of the "X0" option, so use graphs (explicit zero x
+      // error) instead, same as the top pad.
+      std::unique_ptr<TGraphErrors> ratioGraph(offsetGraph(r.get(), selections[i].dataOffset,
+                                                            Form("g_ratio_%s", selections[i].sys.c_str())));
+      dlutility::SetMarkerAtt(ratioGraph.get(), selections[i].color, 1.1, selections[i].dataMarker);
+      dlutility::SetLineAtt(ratioGraph.get(), selections[i].color, 2, 1);
+      ratioGraph->Draw("P SAME");
 
-  // TH1's "P" draws a horizontal tick spanning the full bin width regardless
-  // of the "X0" option, so use graphs (explicit zero x error) instead, same
-  // as the top pad.
-  std::unique_ptr<TGraphErrors> ratioQQ(offsetGraph(rQQ.get(),  -0.15, "g_ratio_qq"));
-  dlutility::SetMarkerAtt(ratioQQ.get(), kRed, 1.1, 21);
-  dlutility::SetLineAtt(ratioQQ.get(), kRed, 2, 1);
-  std::unique_ptr<TGraphErrors> ratioQGGG(offsetGraph(rQGGG.get(),  0.15, "g_ratio_qggg"));
-  dlutility::SetMarkerAtt(ratioQGGG.get(), kAzure - 6, 1.1, 22);
-  dlutility::SetLineAtt(ratioQGGG.get(), kAzure - 6, 2, 1);
-  ratioQQ->Draw("P SAME");
-  ratioQGGG->Draw("P SAME");
+      ratioHistograms.push_back(std::move(r));
+      ratioGraphs.push_back(std::move(ratioGraph));
+    }
 
   TLine line(xjPlotMin, 1.0, xjBins[nbins], 1.0);
   line.SetLineStyle(2);
