@@ -828,9 +828,11 @@ int createResponse_exclusive_v2_AA_inclusive (
 				continue;
 			}
 
-			const bool miss_pair  = (cat0 == kMiss) || ( cat0 == kFakeMiss );
-			const bool fake_pair  = (cat0 == kFake) || ( cat0 == kFakeMiss );
-			const bool real_pair  = (cat0 == kFill);
+			const bool miss_pair  = (cat0 == kMiss);
+			// || ( cat0 == kFakeMiss );
+			const bool fake_pair  = (cat0 == kFake);
+			//  || ( cat0 == kFakeMiss );
+			const bool real_pair  = (cat0 == kFill) || (cat0 == kFakeMiss);
 
 			if (miss_pair) { ++n_miss[isample]; }
 			if (fake_pair) { ++n_fake[isample]; }

@@ -20,6 +20,7 @@
 #include "TTree.h"
 
 #include "dlUtility.h"
+#include "PlotUtils.h"
 #include "read_binning.h"
 
 namespace
@@ -1013,7 +1014,9 @@ void drawCOMBModulation_AA_v2(const int cone_size = 3,
                            const std::string config = "binning_AA.config")
 {
   gStyle->SetOptStat(0);
-  dlutility::SetyjPadStyle();
+  // dlutility::SetyjPadStyle();
+  PlotUtils::set_style();
+
 
   read_binning rb(config);
   const int nbins = rb.get_nbins();
@@ -1172,41 +1175,80 @@ void drawCOMBModulation_AA_v2(const int cone_size = 3,
   raw->SetMaximum(1.55*raw->GetMaximum());
   raw->GetXaxis()->SetTitleOffset(1.05);
   raw->GetYaxis()->SetTitleOffset(1.25);
+  raw->GetYaxis()->SetRangeUser(0, raw->GetMaximum());
 
-  TCanvas canvas("c_dphi_comb", "c_dphi_comb", 650, 560);
+  TCanvas canvas("c_dphi_comb", "c_dphi_comb", 600, 600);
   canvas.SetLeftMargin(0.12);
   canvas.SetRightMargin(0.04);
   canvas.SetTopMargin(0.04);
   canvas.SetBottomMargin(0.12);
-  raw->Draw("hist");
+  raw->SetMarkerStyle(20);
+  raw->SetMarkerSize(1.2);
+  raw->SetMarkerColor(kBlack);
+  raw->Draw("pe");
+  raw->GetXaxis()->SetTitle("#Delta#varphi");
   normalizationRegion->Draw("hist same");
   signalRegion->Draw("hist same");
-  raw->Draw("hist same");
+  // raw->Draw("hist same");
   backgrounds[0]->Draw("hist same");
-  etaSeparated->Draw("hist same");
-  fittedEtaSeparated->Draw("hist same");
-  nominalSubtracted->Draw("hist same");
+  etaSeparated->SetMarkerStyle(21);
+  etaSeparated->SetMarkerSize(1.2);
+  etaSeparated->SetMarkerColor(kCyan + 2);
+  etaSeparated->SetLineWidth(2);
+  etaSeparated->Draw("pe same");
+
+  fittedEtaSeparated -> GetXaxis()->SetRangeUser(0,2.5);
+  fittedEtaSeparated->Draw("l same");
+
+  nominalSubtracted->GetXaxis()->SetRangeUser(7.0*TMath::Pi()/8.0, TMath::Pi());
+  nominalSubtracted->SetMarkerStyle(22);
+  nominalSubtracted->SetMarkerSize(1.2);
+  nominalSubtracted->SetMarkerColor(kRed + 1);
+  nominalSubtracted->SetLineWidth(2);
+  nominalSubtracted->Draw("pe same");
+  
+  downSubtracted->GetXaxis()->SetRangeUser(7.0*TMath::Pi()/8.0, TMath::Pi());
   downSubtracted->Draw("hist same");
+  upSubtracted->GetXaxis()->SetRangeUser(7.0*TMath::Pi()/8.0, TMath::Pi());
   upSubtracted->Draw("hist same");
 
   float centralityBins[5] = {0};
   rb.get_centrality_bins(centralityBins);
-  dlutility::DrawSPHENIX(0.18, 0.91, 0.040);
-  dlutility::drawText(Form("#it{p}_{T,1} #geq %.1f GeV", leadingCut), 0.18, 0.80, 0, kBlack, 0.038);
-  dlutility::drawText(Form("#it{p}_{T,2} #geq %.1f GeV", subleadingCut), 0.18, 0.75, 0, kBlack, 0.038);
-  dlutility::drawText(Form("%.0f - %.0f %%", centralityBins[centrality_bin], centralityBins[centrality_bin + 1]),  0.18, 0.70, 0, kBlack, 0.038);
 
-  TLegend legend(0.47, 0.49, 0.94, 0.93);
+  const std::vector<std::string> pan = {"(a)", "(b)", "(c)", "(d)"};
+
+  std::vector<std::string> tags = {
+    "#it{#bf{sPHENIX} Internal}",
+    "Au+Au#kern[0.02]{#sqrt{#it{s_{_{NN}}}} = 200 GeV}",
+    Form("p_{T,1} #geq %.1f GeV", leadingCut),
+    Form("p_{T,2} #geq %.1f GeV", subleadingCut),
+    Form("#bf{%s} : %.0f - %.0f %%", pan[centrality_bin].c_str(), centralityBins[centrality_bin], centralityBins[centrality_bin + 1])
+  };
+  const double textX = 0.18;
+  const double textY = 0.91;
+  const double textSpacing = 0.05;
+  const double textSize = 0.038;
+  for (size_t i = 0; i < tags.size(); ++i)
+  {
+    PlotUtils::myText(textX, textY - i * textSpacing, kBlack, tags[i].c_str(), textSize);
+  }
+
+  // dlutility::DrawSPHENIX(0.18, 0.91, 0.040);
+  // dlutility::drawText(Form("#it{p}_{T,1} #geq %.1f GeV", leadingCut), 0.18, 0.80, 0, kBlack, 0.038);
+  // dlutility::drawText(Form("#it{p}_{T,2} #geq %.1f GeV", subleadingCut), 0.18, 0.75, 0, kBlack, 0.038);
+  // dlutility::drawText(Form("%.0f - %.0f %%", centralityBins[centrality_bin], centralityBins[centrality_bin + 1]),  0.18, 0.70, 0, kBlack, 0.038);
+
+  TLegend legend(0.55, 0.69, 0.74, 0.93);
   legend.SetBorderSize(0);
   legend.SetFillStyle(0);
-  legend.SetTextSize(0.030);
-  legend.AddEntry(raw.get(), "Raw #Delta#phi pairs", "l");
-  legend.AddEntry(backgrounds[0].get(), "Nominal flow modulation", "l");
-  legend.AddEntry(etaSeparated.get(), "#Delta#eta-separated fit input", "l");
-  legend.AddEntry(fittedEtaSeparated.get(), "Fitted #Delta#eta histogram", "l");
-  legend.AddEntry(nominalSubtracted.get(), "Nominal modulation sub.", "l");
-  legend.AddEntry(downSubtracted.get(), "COMBDown: 0.7(v_{2,2},v_{3,3})", "l");
-  legend.AddEntry(upSubtracted.get(), "COMBUp: 1.3(v_{2,2},v_{3,3})", "l");
+  legend.SetTextSize(0.025);
+  legend.AddEntry(raw.get(), "Raw Exclusive pairs", "pe");
+  legend.AddEntry(backgrounds[0].get(), "Flow modulated background", "l");
+  legend.AddEntry(etaSeparated.get(), "Inclusive pairs (#Delta#eta > 0.8)", "pe");
+  legend.AddEntry(fittedEtaSeparated.get(), "Nominal Fit", "l");
+  legend.AddEntry(nominalSubtracted.get(), "Subtracted Exclusive pairs", "pe");
+  legend.AddEntry(downSubtracted.get(), "COMBDown: 0.7#times v_{2,2}, 1.3#timesv_{3,3}", "l");
+  legend.AddEntry(upSubtracted.get(), "COMBUp: 1.3#times v_{2,2}, 0.7#timesv_{3,3}", "l");
   legend.AddEntry(signalRegion.get(), "Signal region", "f");
   legend.AddEntry(normalizationRegion.get(), "Flow normalization region", "f");
   legend.Draw();

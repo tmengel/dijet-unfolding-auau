@@ -20,7 +20,8 @@ v1_result_dir="${script_dir}/preliminary_results"
 v1_label="Preliminary"
 v1_source="hists"
 v1_iter=1
-
+# /home/tmengel/PPG14/version1/dijet-unfolding-final/results/newfiles_2026-08-24_v01
+# v3_result_dir="${DIJET_UNFOLDING_PATH}/results/newfiles_2026-08-24_v01/"
 v3_result_dir="${DIJET_UNFOLDING_PATH}"
 v3_label="Current"
 v3_source="plots"

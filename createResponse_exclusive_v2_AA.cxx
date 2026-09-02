@@ -65,7 +65,7 @@ int createResponse_exclusive_v2_AA (
 
 	const bool OVERRIDE_EVENT_WEIGHT = false;
 	const bool DO_CENT_EVENT_WEIGHT = false;
-	const bool DO_CENT_CUT = false;
+	const bool DO_CENT_CUT = true;
 	const double prior_var = 0.5;
 	const double prior_norm = 1.0;
 	// Space in which the prior fraction is applied (see priorReweightQA.h):
