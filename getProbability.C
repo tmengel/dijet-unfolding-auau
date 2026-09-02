@@ -92,7 +92,8 @@ void getProbability(
   }
 
   const float vertexCut = static_cast<float>(rb.get_vtx_cut());
-  const float etaCut = rb.get_abs_eta_acceptance(jetRadius);
+  // Per-jet fiducial |eta| acceptance now comes from the jet_accept_eta flag
+  // in the input tree rather than a hard cut computed from the cone size.
   const float recoPtCut = static_cast<float>(rb.get_reco_pt_min_cut());
 
   auto* input = TFile::Open(infile.c_str(), "READ");
@@ -111,8 +112,8 @@ void getProbability(
   }
 
   tree->SetBranchStatus("*", 0);
-  for (const char* branch : {"cent", "zvrtx", "jet_pT", "jet_unsub_pT",
-                             "jet_E", "jet_unsub_E", "jet_eta"})
+  for (const char* branch : {"cent", "zvrtx", "jet_pT", "jet_comp_pT",
+                             "jet_E", "jet_unsub_E", "jet_eta", "jet_accept_eta"})
   {
     tree->SetBranchStatus(branch, 1);
   }
@@ -124,13 +125,15 @@ void getProbability(
   std::vector<float>* jetEnergy = nullptr;
   std::vector<float>* jetUnsubEnergy = nullptr;
   std::vector<float>* jetEta = nullptr;
+  std::vector<int>*   jetAcceptEta = nullptr;
   tree->SetBranchAddress("cent", &centrality);
   tree->SetBranchAddress("zvrtx", &vertexZ);
   tree->SetBranchAddress("jet_pT", &jetPt);
-  tree->SetBranchAddress("jet_unsub_pT", &jetUnsubPt);
+  tree->SetBranchAddress("jet_comp_pT", &jetUnsubPt); // renamed: v004 background-quality discriminant is jet_comp_pT, not jet_unsub_pT
   tree->SetBranchAddress("jet_E", &jetEnergy);
   tree->SetBranchAddress("jet_unsub_E", &jetUnsubEnergy);
   tree->SetBranchAddress("jet_eta", &jetEta);
+  tree->SetBranchAddress("jet_accept_eta", &jetAcceptEta);
 
   constexpr int kFineCentralityBins = 100;
   std::vector<double> eventsByCentrality(kFineCentralityBins, 0.0);
@@ -146,7 +149,7 @@ void getProbability(
   const Long64_t entries = tree->GetEntries();
   const Long64_t progressStep = std::max<Long64_t>(1, entries / 10);
   TF1 backgroundCut("fcut", "[0]+[1]*TMath::Exp(-[2]*x)", 0.0, 100.0);
-  backgroundCut.SetParameters(2.5, 36.2, 0.035);
+  backgroundCut.SetParameters(0,42.9,0.0306);
 
   for (Long64_t entry = 0; entry < entries; ++entry)
   {
@@ -166,11 +169,12 @@ void getProbability(
     // v0 reweighting procedure and the direct example in genProbs.C.
     eventsByCentrality[centrality] += 1.0;
 
-    if (!jetPt || !jetUnsubPt || !jetEnergy || !jetUnsubEnergy || !jetEta ||
+    if (!jetPt || !jetUnsubPt || !jetEnergy || !jetUnsubEnergy || !jetEta || !jetAcceptEta ||
         jetPt->size() != jetUnsubPt->size() ||
         jetPt->size() != jetEnergy->size() ||
         jetPt->size() != jetUnsubEnergy->size() ||
-        jetPt->size() != jetEta->size())
+        jetPt->size() != jetEta->size() ||
+        jetPt->size() != jetAcceptEta->size())
     {
       continue;
     }
@@ -181,7 +185,7 @@ void getProbability(
       const float pt = jetPt->at(jet);
       if (!std::isfinite(pt) || !std::isfinite(jetEta->at(jet)) ||
           pt < recoPtCut || jetEnergy->at(jet) < 0.0 ||
-          jetUnsubEnergy->at(jet) < 0.0 || std::abs(jetEta->at(jet)) > etaCut ||
+          jetUnsubEnergy->at(jet) < 0.0 || !jetAcceptEta->at(jet) ||
           jetUnsubPt->at(jet) - pt > cutValue)
       {
         continue;

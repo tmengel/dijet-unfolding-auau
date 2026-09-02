@@ -41,7 +41,8 @@ void getBackground(
 	const int nbins = rb.get_nbins();
 
 	const float vertex_cut = static_cast<float>( rb.get_vtx_cut() );
-	const float etacut = rb.get_abs_eta_acceptance( static_cast<float>(cone_size) * 0.1 );
+	// Per-jet fiducial |eta| acceptance now comes from the jet_accept_eta flag
+	// in the input tree rather than a hard cut computed from the cone size.
 	const float etacut_bkg = rb.get_eta_cut_bkg();
 	const float reco_cut = static_cast<float>( rb.get_reco_pt_min_cut() );
 
@@ -118,11 +119,12 @@ void getBackground(
 	t->SetBranchStatus("zvrtx", 1);
 	t->SetBranchStatus("sumeT", 1);
 	t->SetBranchStatus("jet_pT", 1);
-	t->SetBranchStatus("jet_unsub_pT", 1);
+	t->SetBranchStatus("jet_comp_pT", 1);
 	t->SetBranchStatus("jet_E", 1);
 	t->SetBranchStatus("jet_unsub_E", 1);
 	t->SetBranchStatus("jet_eta", 1);
 	t->SetBranchStatus("jet_phi", 1);
+	t->SetBranchStatus("jet_accept_eta", 1);
 	t->SetCacheSize(256 * 1024 * 1024);
 	t->AddBranchToCache("*", kTRUE);
 	std::vector<float> *reco_jet_pt = 0;
@@ -131,16 +133,18 @@ void getBackground(
 	std::vector<float> *reco_jet_e_unsub = 0;
 	std::vector<float> *reco_jet_eta = 0;
 	std::vector<float> *reco_jet_phi = 0;
+	std::vector<int>   *reco_jet_accept_eta = 0;
 	int centrality;
 	float mbd_vertex_z;
 	float sumeT = 0;
 	t->SetBranchAddress("cent", &centrality);
 	t->SetBranchAddress("jet_pT", &reco_jet_pt);
-	t->SetBranchAddress("jet_unsub_pT", &reco_jet_pt_unsub);
+	t->SetBranchAddress("jet_comp_pT", &reco_jet_pt_unsub); // renamed: v004 background-quality discriminant is jet_comp_pT, not jet_unsub_pT
 	t->SetBranchAddress("jet_E", &reco_jet_e);
 	t->SetBranchAddress("jet_unsub_E", &reco_jet_e_unsub);
 	t->SetBranchAddress("jet_eta", &reco_jet_eta);
 	t->SetBranchAddress("jet_phi", &reco_jet_phi);
+	t->SetBranchAddress("jet_accept_eta", &reco_jet_accept_eta);
 	t->SetBranchAddress("zvrtx", &mbd_vertex_z);
 	t->SetBranchAddress("sumeT", &sumeT);
 
@@ -195,8 +199,7 @@ void getBackground(
 	}
 
 	TF1 *fcut = new TF1("fcut","[0]+[1]*TMath::Exp(-[2]*x)",0.0,100.0);
-  	fcut->SetParameters(2.5,36.2,0.035);
-
+  	fcut->SetParameters(0,42.9,0.0306);
   	for (int i = 0; i < total_entries; i++)
     {
 		t->GetEntry(i);
@@ -221,8 +224,8 @@ void getBackground(
 
 			if (reco_jet_pt->at(j) < reco_subleading_cut) continue;
 			if (reco_jet_e->at(j) < 0) continue;
-			if (reco_jet_e_unsub->at(j) < 0) continue;
-			if (fabs(reco_jet_eta->at(j)) > etacut) continue;
+			// if (reco_jet_e_unsub->at(j) < 0) continue;
+			if (!reco_jet_accept_eta->at(j)) continue;
 
 			float pt_unsub = reco_jet_pt_unsub->at(j) - reco_jet_pt->at(j);
 
@@ -262,7 +265,7 @@ void getBackground(
 			if (reco_jet_pt->at(j) < reco_subleading_cut) continue;
 			if (reco_jet_e->at(j) < 0) continue;
 			if (reco_jet_e_unsub->at(j) < 0) continue;
-			if (fabs(reco_jet_eta->at(j)) > etacut) continue;
+			if (!reco_jet_accept_eta->at(j)) continue;
 			float pt_unsub = reco_jet_pt_unsub->at(j) - reco_jet_pt->at(j);
 
 			if (pt_unsub > cut_value)
