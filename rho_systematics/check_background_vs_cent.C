@@ -75,8 +75,8 @@ void draw_other(TPad *pad, const char *path, const char *label, Long64_t nentrie
   fcut->Draw("same");
 }
 
-void check_background_vs_cent(const char *fileA = "/home/tmengel/PPG14/rootfiles/v001_20260720/run2auau_rho_jet.root",
-                               const char *fileB = "/home/tmengel/PPG14/rootfiles/data_v004_20260821_calibrated_merged.root",
+void check_background_vs_cent(const char *fileA = "/sphenix/user/tmengel/JetUESub-JSTG-TF03/macros/data/rootfiles/run2auau_rho_jet.root",
+                               const char *fileB = "/sphenix/user/tmengel/dijet-ana-auau/macros/unfolding/input/data/data_v004_20260821_calibrated_merged.root",
                                Long64_t nentries = 5000000,
                                const char *outpng = "background_vs_cent.png")
 {

@@ -189,7 +189,7 @@ void make_data_rho_compare(Long64_t stride = 1)
     gStyle->SetOptStat(0);
     gSystem->mkdir("rho_systematics/data/plots", true);
 
-    const std::string raw_dir = "/home/tmengel/PPG14/rootfiles/v001_20260720/";
+    const std::string raw_dir = "/sphenix/user/tmengel/JetUESub-JSTG-TF03/macros/data/rootfiles";
 
     PerJetHists h_rho   = fill_per_jet("rho",   raw_dir + "run2auau_rho_jet.root", stride);
     PerJetHists h_norho = fill_per_jet("norho", raw_dir + "run2auau_jet.root", stride);

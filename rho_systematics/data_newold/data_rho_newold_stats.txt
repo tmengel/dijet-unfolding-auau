@@ -1,0 +1,56 @@
+new: /sphenix/user/tmengel/dijet-ana-auau/macros/unfolding/input/data/data_v004_20260821_calibrated_merged.root
+old: /sphenix/user/tmengel/dijet-ana-auau/macros/unfolding/input/data/run2auau_rho_jet.root
+stride: 1
+
+======================================================================================
+QUANTITY                                      NEW (v004)    OLD (run2auau)     new/old
+--------------------------------------------------------------------------------------
+-- events --
+events processed                               296556620         295199099      1.0046
+  of which is_minbias==1 (new only)            296556620                 0      0.0000
+<centrality> [%]                                  47.026            47.030      0.9999
+<z_vtx> [cm]                                      -0.529            -0.535      0.9873
+RMS z_vtx [cm]                                    11.291            11.283      1.0007
+<sum E_T> [GeV]  (*)                              -4.836           344.116     -0.0141
+<MBD charge>  (*)                                524.767            79.287      6.6186
+<rho_CEMC> [GeV]                                 0.16138           0.16066      1.0045
+<rho_HCALIN> [GeV]                               0.01228           0.01222      1.0047
+<rho_HCALOUT> [GeV]                              0.03281           0.03263      1.0056
+-- jets --
+jets in tree (all)                             444525452         344063447      1.2920
+jets/event (all)                                 1.49896           1.16553      1.2861
+jets pT>8, |eta|<0.8                            65171476          81104763      0.8035
+  per event                                     0.219761          0.274746      0.7999
+  <pT> [GeV]                                      9.8126            9.9216      0.9890
+jets + E>=0 & E_unsub>=0                        62859561          81082010      0.7753
+  E>=0 pass fraction                             0.96453           0.99972      0.9648
+jets + UE fake-jet cut                           1584523          81082003      0.0195
+  UE cut pass fraction                           0.02521           1.00000      0.0252
+  overall pass fraction                          0.02431           0.99972      0.0243
+-- event yields --
+events with >=1 selected jet                    45426668          53946135      0.8421
+  fraction                                      0.153180          0.182745      0.8382
+events with >=2 selected jets                   14208338          19238068      0.7386
+  fraction                                      0.047911          0.065170      0.7352
+<leading jet pT> [GeV]                           10.1150           10.2870      0.9833
+-- subtraction --
+<(E_unsub-E)/E_unsub>                            0.77303           0.00852     90.7769
+<pT_unsub - pT_sub> [GeV]                       33.32589          -3.04461    -10.9459
+RMS pT_unsub - pT_sub [GeV]                     10.52542           2.70872      3.8857
+======================================================================================
+
+(*) NOT directly comparable between the two productions:
+    sumeT   : new = sum E_T over RHO-SUBTRACTED towers (fluctuates about 0, can be
+              negative; components in sumeT_cemc/ihcal/ohcal). old = raw sum E_T.
+    mbd_q   : new mbd_q and old mbdQ use different normalisations.
+    cent, zvrtx and the rho values ARE on the same footing.
+
+(!) jet_unsub_pT / jet_unsub_E changed meaning between the productions:
+    new = true unsubtracted (raw tower) jet, so pT_unsub - pT_sub is the full UE
+          (tens of GeV in central events).
+    old = recomputed from already-subtracted constituents, so pT_unsub is BELOW
+          pT_sub and pT_unsub - pT_sub is small and mostly negative.
+    => the UE fake-jet cut pT_unsub - pT_sub > 40*exp(-0.038*cent), tuned on the
+       old/Sub1 convention, is meaningless on the new sample as written and must
+       be retuned before it is applied to the new production. The rows above are
+       reported as-is to quantify that, not as a physics comparison.
