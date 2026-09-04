@@ -7,18 +7,13 @@ set -euo pipefail
 # source "$script_dir/setup_env.sh"
 
 
-# prelim_result_dir="/home/tmengel/PPG14/version1/dijet-unfolding-final/results/final_hists_NocentCut_jes4_jerv1_rho_comb_norm0prior0_sumeTZ"
 prelim_result_dir="/sphenix/user/tmengel/dijet-ana-auau/macros/unfolding/dijet-unfolding-auau/preliminary_results"
-# prelim_result_dir="/home/tmengel/PPG14/version1/dijet-unfolding-final/results/final_hists_centCut_jes4_jerv1_rho_comb_norm05prior1_sumeTZ_tbin0"
-# prelim_result_dir="/home/tmengel/PPG14/version1/dijet-unfolding-final/results/final_hists_Nocentcut_jes4_jerv1_rho_comb_norm1prior05_sumeTZ_tbin0"
-# prelim_result_dir="/home/tmengel/PPG14/version1/dijet-unfolding-final/results/final_hists_centCut_jes4_jerv1_rho_comb_norm1prior1_sumeTZ_tbin0"
-# prelim_result_dir="/home/tmengel/PPG14/version1/dijet-unfolding-final/results/cent_cut_2026-08-27_v01/final_hists"
 output_dir="/sphenix/user/tmengel/dijet-ana-auau/macros/unfolding/dijet-unfolding-auau/compare_prelim"
 mkdir -p "$output_dir"
 conesize=3
 for cent in 0 1 2 3 ; do
     prelim_file="${prelim_result_dir}/final_hists_AA_cent_${cent}_r0${conesize}.root"
-    updated_file="/sphenix/user/tmengel/dijet-ana-auau/macros/unfolding/dijet-unfolding-auau/final_hists/final_hists_AA_cent_${cent}_r0${conesize}.root"
+    updated_file="final_hists/final_hists_AA_cent_${cent}_r0${conesize}.root"
     # Nominal Bayesian-iteration index (0-indexed) -> N_iter = 2, matching the
     # prior_iteration constant in createResponse_noempty_AA.cxx.
     iter=1

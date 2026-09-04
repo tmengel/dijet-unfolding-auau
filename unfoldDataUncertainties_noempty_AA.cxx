@@ -1,3 +1,4 @@
+#include <cmath>
 #include <iostream>
 using std::cout;
 using std::endl;
@@ -53,6 +54,13 @@ int unfoldDataUncertainties_noempty_AA(
   if (inclusive_sys)
     {
       sysname = "INCLUSIVE";
+    }
+  // Jet-v2 cross-check -- see createResponse_exclusive_v2_AA.cxx. Naming only,
+  // so this reads response_matrix_..._JETV2.root instead of ..._nominal.root.
+  const double jetv2_scale = rb.get_jetv2_scale();
+  if (std::fabs(jetv2_scale - 1.0) > 1e-6)
+    {
+      sysname = rb.get_jetv2_systematic_name();
     }
   float pt1_reco;
   float pt2_reco;

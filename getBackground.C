@@ -213,13 +213,15 @@ void getBackground(
 	if ( has_jet_accept_eta ) 
 	{
 		// new verison of file
-		// fcut -> SetParameters( 0, 42.9,0.0306 );
-		fcut -> SetParameters( 7.95, 34.3, 0.047 );
+		fcut -> SetParameters( -2.29, 41.7,0.029 );
+		// fcut -> SetParameters( 7.95, 34.3, 0.047 );
 	}
 	else 
 	{
 		fcut -> SetParameters( 0, 40.0, 0.035 );
 	}
+	std::cout << "fcut parameters: " << fcut->GetParameter(0) << ", " << fcut->GetParameter(1) << ", " << fcut->GetParameter(2) << std::endl;
+
   	for (int i = 0; i < total_entries; i++)
     {
 		t->GetEntry(i);

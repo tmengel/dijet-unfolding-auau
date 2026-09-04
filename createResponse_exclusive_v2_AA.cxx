@@ -45,6 +45,26 @@
 // histograms/response, agnostic to where they came from.
 enum DijetPairCategory { kFill = 0, kMiss = 1, kFake = 2, kSkip = 3, kUESub = 4 , kFakeMiss = 5 };
 
+// Angle of a jet to the 2nd-order event plane, folded into [0, pi/2]. Same
+// definition as AnaUtils::get_dpsi2 -- which is what wrote the tree's dpsi2
+// branch, but only for the LEADING truth leg -- reimplemented here because
+// this macro runs in the ROOT interpreter and does not link libmyana. The
+// subleading leg's angle is rebuilt from the psi2 and truth_phi2 branches
+// with this, for the jet-v2 cross-check weight below. Folding by pi is
+// harmless there: cos(2*dpsi2) is pi-periodic in the underlying dphi.
+static double jetv2_dpsi2( const double psi2, const double phi_jet )
+{
+	auto dphi_wrap = [](double a, double b) -> double
+	{
+		double dphi = b - a;
+		while ( dphi >  TMath::Pi() ) { dphi -= 2.0 * TMath::Pi(); }
+		while ( dphi < -TMath::Pi() ) { dphi += 2.0 * TMath::Pi(); }
+		return std::fabs(dphi);
+	};
+	const double psi2_mod = ( psi2 < 0 ) ? psi2 + TMath::Pi() : psi2 - TMath::Pi();
+	return std::fabs( std::min( dphi_wrap(phi_jet, psi2), dphi_wrap(phi_jet, psi2_mod) ) );
+}
+
 int createResponse_exclusive_v2_AA (
 	const std::string configfile = "binning.config",
 	const int full_or_half = 0,
@@ -118,6 +138,8 @@ int createResponse_exclusive_v2_AA (
 	const double flavor_qq_fraction = rb.get_flavor_qq_fraction();
 	const std::string flavor_suffix = (flavor_sys == 1) ? "_qq" : (flavor_sys == 2) ? "_qg_gg" : "";
 
+
+	
 	// Every other mode reads one flavor stream per pT sample (3 streams,
 	// stream index == pT-sample index, matching every array below
 	// historically). Mix mode instead reads BOTH flavor-tagged files for
@@ -168,8 +190,12 @@ int createResponse_exclusive_v2_AA (
 	// the truth-leading/truth-subleading legs (truth_idx1=0, truth_idx2=1
 	// in dijet_pair_matching.C -- pT-sorted by construction, so
 	// truth_pt1 >= truth_pt2 always), reco_pt1/reco_pt2 the corresponding
-	// selected reco legs, valid only when reco_pair is set. Sized for the
-	// mix-mode 6-stream case; non-mix modes only ever touch indices [0..2].
+	// selected reco legs, valid only when reco_pair is set. truth_lead_pt
+	// (dijet_pair_matching_v3.C) is the event's hardest truth jet's pT
+	// regardless of category/acceptance -- unlike truth_pt1, it is not
+	// gated on a truth dijet candidate existing at all, so it is what the
+	// pT-hat sample-boundary veto below keys on. Sized for the mix-mode
+	// 6-stream case; non-mix modes only ever touch indices [0..2].
 	int   b_cent[6];
 	float b_zvrtx[6];
 	float b_sumeT[6];
@@ -177,8 +203,16 @@ int createResponse_exclusive_v2_AA (
 	int   b_reco_pair[6];
 	float b_truth_pt1[6];
 	float b_truth_pt2[6];
+	float b_truth_lead_pt[6];
 	float b_reco_pt1[6];
 	float b_reco_pt2[6];
+
+	float b_psi2[6];
+	float b_truth_phi1[6];
+	float b_truth_phi2[6];
+	float b_dpsi2[6];
+	int b_truth_match_idx1[6];
+	int b_truth_match_idx2[6];
 
 	TFile * fin[6];
 	TTree * texcl[6];
@@ -202,12 +236,19 @@ int createResponse_exclusive_v2_AA (
 		texcl[i]->SetBranchAddress("cent", &b_cent[i]);
 		texcl[i]->SetBranchAddress("zvrtx", &b_zvrtx[i]);
 		texcl[i]->SetBranchAddress("sumeT", &b_sumeT[i]);
+		texcl[i]->SetBranchAddress("dpsi2", &b_dpsi2[i]);
 		texcl[i]->SetBranchAddress("category", &b_category[i]);
 		texcl[i]->SetBranchAddress("reco_pair", &b_reco_pair[i]);
 		texcl[i]->SetBranchAddress("truth_pt1", &b_truth_pt1[i]);
 		texcl[i]->SetBranchAddress("truth_pt2", &b_truth_pt2[i]);
+		texcl[i]->SetBranchAddress("truth_lead_pt", &b_truth_lead_pt[i]);
 		texcl[i]->SetBranchAddress("reco_pt1", &b_reco_pt1[i]);
 		texcl[i]->SetBranchAddress("reco_pt2", &b_reco_pt2[i]);
+		texcl[i]->SetBranchAddress("psi2", &b_psi2[i]);
+		texcl[i]->SetBranchAddress("truth_match_idx1", &b_truth_match_idx1[i]);
+		texcl[i]->SetBranchAddress("truth_match_idx2", &b_truth_match_idx2[i]);
+		texcl[i]->SetBranchAddress("truth_phi1", &b_truth_phi1[i]);
+		texcl[i]->SetBranchAddress("truth_phi2", &b_truth_phi2[i]);
 	}
 	std::cout << "n_events (hardcoded): " << n_events[0] << " " << n_events[1] << " " << n_events[2] << std::endl;
 	std::cout << "has_event_weight: " << has_event_weight[0] << " " << has_event_weight[1] << " " << has_event_weight[2] << std::endl;
@@ -290,7 +331,42 @@ int createResponse_exclusive_v2_AA (
 	const double flow_v33_scale = rb.get_flow_v33_sys();
 	const bool flow_sys = std::fabs(flow_v22_scale - 1.0) > 1e-6 || std::fabs(flow_v33_scale - 1.0) > 1e-6;
 	
+	
+	// Jet-v2 cross-check: HIJING+Pythia embeds the signal jets with no azimuthal
+	// correlation to the event plane (the tree's dpsi2 is flat, mean pi/4), so a
+	// hypothetical jet v2 is injected here by reweighting each MC pair by
+	// 1 + amp*(cos(2*dpsi2_leg1) + cos(2*dpsi2_leg2)), with amp fixed by the
+	// normalization pre-pass below so that each leg's realized v2 is exactly
+	// JETV2_SCALE. That changes which part of the modulated UE each jet sits on, so it moves
+	// the reco legs' background subtraction and therefore the response itself --
+	// which is the whole point of running it here rather than as a flat scaling of
+	// the final spectrum. Like the flavor cross-check this is a "what if", not a
+	// measured up/down uncertainty, so it is deliberately NOT folded into
+	// drawSys_AA.C's total band; it only needs a distinct output name.
+	//
+	// JETV2_SCALE is the jet v2 itself (0.03 for the 3% cross-check), NOT a
+	// multiplier -- the 1.0 default is just an out-of-range sentinel meaning
+	// "off", matching how FLOW_V22_SCALE flags itself.
+	const double jetv2_scale = rb.get_jetv2_scale();
+	const bool jetv2_sys = std::fabs(jetv2_scale - 1.0) > 1e-6;
+	if ( jetv2_sys )
+	{
+		std::cout << "JetV2 cross-check ACTIVE: injecting jet v2 = " << jetv2_scale
+		          << " (weight 1 + 2*v2*cos(2*dpsi2) per truth leg)" << std::endl;
+		if ( !(jetv2_scale > 0.0) || jetv2_scale >= 0.5 )
+		{
+			std::cerr << "JETV2_SCALE must be a jet v2 in (0, 0.5) -- got " << jetv2_scale
+			          << ". Outside that the weight 1 + 2*v2*cos(2*dpsi2) goes negative." << std::endl;
+			return 1;
+		}
+	}
+	else
+	{
+		std::cout << "JetV2 cross-check off (JETV2_SCALE = " << jetv2_scale << ")" << std::endl;
+	}
+	
 	const int inclusive_sys = rb.get_inclusive_sys();
+
 
 	const double JES_sys = rb.get_jes_sys();
 	const double JER_sys = rb.get_jer_sys();
@@ -351,6 +427,12 @@ int createResponse_exclusive_v2_AA (
 		using_sys = 1;
 		sys_name = "INCLUSIVE";
 	}
+	if ( jetv2_sys )
+	{
+		using_sys = 1;
+		sys_name = rb.get_jetv2_systematic_name();
+	}
+
 	// Flavor-tagged cross-check (qq vs qg/gg leading-dijet parton origin) --
 	// see dijet_matching_flavor.C. Not a JES/JER-style up/down uncertainty,
 	// so it's deliberately not folded into drawSys_AA.C's total systematic
@@ -457,7 +539,15 @@ int createResponse_exclusive_v2_AA (
 	TH1D *h_centrality = new TH1D("h_centrality", ";Centrality; counts", 20, 0, 100);
 	TH1D *h_mbd_vertex = new TH1D("h_mbd_vertex", ";z_{vtx}; counts", 120, -60, 60);
 	TH1D *h_sumeT = new TH1D("h_sumeT", ";#Sigma E_{T}; counts", 200, 0, 2000);
-	
+
+	// Debug: distribution of the jet-v2 cross-check weight
+	// (1 + jetv2_amp*(c1 + c2)) actually applied per pair, unweighted --
+	// only filled when the jetv2 cross-check is active. Mean should sit at
+	// 1 and the spread should be consistent with jetv2_amp*sqrt(2), the
+	// same closure the console printout at the end of the event loop checks
+	// numerically.
+	TH1D *h_jetv2_weight = new TH1D("h_jetv2_weight", ";jet-v2 cross-check weight;counts", 200, 0.5, 1.5);
+
 	// pure fills
 	TH1D *h_truth_xj = new TH1D("h_truth_xj",";A_{J};1/N", nbins, ixj_bins);
 	TH1D *h_reco_xj = new TH1D("h_reco_xj",";A_{J};1/N", nbins, ixj_bins);
@@ -508,14 +598,6 @@ int createResponse_exclusive_v2_AA (
 	// halfway to the steep solution) and the PRIOR variation unreweighted.
 	const double prior_fraction = prior_sys ? prior_var : prior_norm;
 	std::cout << "Prior fraction: " << prior_fraction << std::endl;
-
-	// Diagnostic: freeze the prior to the nominal PRIMER1 result so a systematic's
-	// own unfolded data cannot feed back into its response weighting.
-	// std::string prior_source = sys_name;
-	// if (const char *freeze = std::getenv("DIJET_FREEZE_PRIOR"))
-	// {
-	// 	if (std::atoi(freeze) != 0) {prior_source = "nominal";}
-	// }
 
 	
 	const int nbin_response = nbins*nbins;
@@ -704,8 +786,8 @@ int createResponse_exclusive_v2_AA (
 				texcl[istream] -> GetEntry(i);
 				const int cat0 = b_category[istream];
 				if (cat0 == kSkip || cat0 == kUESub) { continue; }
-				const float truth_pt0 = b_truth_pt1[istream];
-				if ( !(truth_pt0 >= sample_boundary[isample] && truth_pt0 < sample_boundary[isample+1]) ) { continue; }
+				const float truth_lead_pt0 = b_truth_lead_pt[istream];
+				if ( !(truth_lead_pt0 >= sample_boundary[isample] && truth_lead_pt0 < sample_boundary[isample+1]) ) { continue; }
 				stream_yield += scale_factor[isample];
 			}
 			if (stream_is_qq[istream]) { yield_qq += stream_yield; } else { yield_qg_gg += stream_yield; }
@@ -730,6 +812,86 @@ int createResponse_exclusive_v2_AA (
 		}
 	}
 
+	// Jet-v2 normalization pre-pass (same idea as the flavor-mix pre-pass above:
+	// one cheap extra sweep over the same trees under the same in-range /
+	// non-Skip/UESub cuts, no smearing or histogram fills, solving for a scale the
+	// main loop then just applies).
+	//
+	// The pair weight is w = 1 + amp*(c1 + c2), with ci = cos(2*dpsi2_i) for each
+	// truth leg. amp is NOT 2*v2: the two legs of a back-to-back dijet are one
+	// azimuthal degree of freedom, not two independent ones, and cos(2*dphi) is
+	// pi-periodic, so c2 ~ c1 and each leg picks up the OTHER leg's modulation as
+	// well as its own. Reweighting with the textbook single-particle form
+	// (1 + 2*v2*c1)(1 + 2*v2*c2) therefore lands at a realized per-jet v2 of
+	// ~1.8*v2 -- 5.3% for a requested 3% in the jet10 sample -- which would put the
+	// wrong number on the cross-check. Solving for amp instead makes the realized
+	// v2 equal JETV2_SCALE by construction:
+	//
+	//   <c1>_w = amp * ( <c1^2> + <c1*c2> ) = v2   ->   amp = v2 / (<c1^2> + <c1*c2>)
+	//
+	// and by the c1 <-> c2 symmetry of both the sample and the weight, <c2>_w = v2
+	// as well, so both legs come out at the requested v2. <w> = 1 exactly, since
+	// <c1> = <c2> = 0 in the unweighted MC (HIJING+Pythia embeds the signal jets
+	// flat in azimuth relative to Psi_2). The expectation values are taken
+	// cross-section weighted, matching how the response is actually filled.
+	double jetv2_amp = 0.0;
+	if ( jetv2_sys )
+	{
+		double sum_w = 0.0, sum_c11 = 0.0, sum_c12 = 0.0, sum_c1 = 0.0;
+		for (int istream = 0; istream < n_streams; istream++)
+		{
+			const int isample = stream_sample[istream];
+			const Long64_t entries_norm = texcl[istream]->GetEntries();
+			for (Long64_t i = 0; i < entries_norm; i++)
+			{
+				texcl[istream] -> GetEntry(i);
+				const int cat0 = b_category[istream];
+				if (cat0 == kSkip || cat0 == kUESub) { continue; }
+				const float truth_lead_pt0 = b_truth_lead_pt[istream];
+				if ( !(truth_lead_pt0 >= sample_boundary[isample] && truth_lead_pt0 < sample_boundary[isample+1]) ) { continue; }
+				const double w = scale_factor[isample] * extra_scale[istream];
+				const double c1 = std::cos( 2.0 * b_dpsi2[istream] );
+				const double c2 = std::cos( 2.0 * jetv2_dpsi2( b_psi2[istream], b_truth_phi2[istream] ) );
+				sum_w += w;
+				sum_c1 += w * c1;
+				sum_c11 += w * c1 * c1;
+				sum_c12 += w * c1 * c2;
+			}
+		}
+		if ( !(sum_w > 0.0) )
+		{
+			std::cerr << "JetV2 cross-check requested but no pairs survive the in-range cuts "
+			          << "in this centrality/cone-size bin -- cannot set the v2 amplitude." << std::endl;
+			return 1;
+		}
+		const double mean_c1 = sum_c1 / sum_w;
+		const double response_c = ( sum_c11 + sum_c12 ) / sum_w;
+		if ( !(response_c > 0.0) )
+		{
+			std::cerr << "JetV2 cross-check: <c1^2> + <c1*c2> = " << response_c
+			          << " is not positive -- cannot solve for the v2 amplitude." << std::endl;
+			return 1;
+		}
+		jetv2_amp = jetv2_scale / response_c;
+		std::cout << "JetV2 normalization -- unweighted <cos(2 dpsi2)> = " << mean_c1
+		          << " (should be ~0: no jet v2 in the input MC)" << std::endl;
+		std::cout << "JetV2 normalization -- <c1^2> + <c1 c2> = " << response_c
+		          << " -> weight amplitude = " << jetv2_amp
+		          << " (naive 2*v2 would be " << 2.0 * jetv2_scale << ")" << std::endl;
+		if ( std::fabs(mean_c1) > 0.01 )
+		{
+			std::cout << "  WARNING: the input MC already carries a jet v2 of ~" << mean_c1
+			          << "; the injected v2 adds to it rather than replacing it." << std::endl;
+		}
+		if ( 2.0 * std::fabs(jetv2_amp) >= 1.0 )
+		{
+			std::cerr << "JetV2 weight amplitude " << jetv2_amp
+			          << " makes 1 + amp*(c1 + c2) go negative -- v2 = " << jetv2_scale
+			          << " is too large for this sample." << std::endl;
+			return 1;
+		}
+	}
+
 	// Fixed seeds: gRandom drives smear_random() — 4357 is ROOT's
 	// TRandom3 default, pinned here so nominal/systematic chains stay event-aligned
 	// (common random numbers) even if ROOT's default changes. rng drives only the
@@ -744,6 +906,13 @@ int createResponse_exclusive_v2_AA (
 	long n_fake[3] = {0, 0, 0};
 	long n_skip[3] = {0, 0, 0};
 	long n_uesub[3] = {0, 0, 0};
+	// Realized jet-v2 weight, reported after the loop as a closure check on the
+	// normalization pre-pass: <w> should be 1 and the weighted <cos(2 dpsi2)> of
+	// EACH leg should come back at JETV2_SCALE.
+	double jetv2_weight_sum = 0.0;
+	double jetv2_c1_sum = 0.0;
+	double jetv2_c2_sum = 0.0;
+	long   jetv2_weight_n = 0;
   	for (int istream = 0; istream < n_streams; istream++)
     {
 		const int isample = stream_sample[istream];
@@ -753,30 +922,73 @@ int createResponse_exclusive_v2_AA (
 		for (Long64_t i = 0; i < entries2; i++)
 		{
 			texcl[istream] -> GetEntry(i);
+
 			const int cat0 = b_category[istream];
+			
 			const float truth_pt0 = b_truth_pt1[istream];
 			const float truth_pt1 = b_truth_pt2[istream];
+			const float truth_lead_pt_val = b_truth_lead_pt[istream];
+
 			const bool has_reco_pair = ( b_reco_pair[istream] != 0 );
 			const float reco_pt0 = has_reco_pair ? b_reco_pt1[istream] : 0.0F;
 			const float reco_pt1 = has_reco_pair ? b_reco_pt2[istream] : 0.0F;
+			
 			const int cent_val = b_cent[istream];
+			
 			const float zvrtx_val = b_zvrtx[istream];
 			const float sumeT_val = b_sumeT[istream];
+
+			const float psi2_val = b_psi2[istream];
+			const int truth_match_idx1_val = b_truth_match_idx1[istream];
+			const int truth_match_idx2_val = b_truth_match_idx2[istream];
+			const float truth_phi1_val = b_truth_phi1[istream];
+			const float truth_phi2_val = b_truth_phi2[istream];
 
 			if ( i % print_every == 0 )
 			{
 				std::cout << "Sample " << isample << " (stream " << istream << ") : " << i << " / " << entries2 << "\r" << std::flush;
 			}
 
-			double event_scale 			= scale_factor[isample] * extra_scale[istream];
+			// Jet-v2 cross-check weight, w = 1 + amp*(c1 + c2), with amp solved in
+			// the normalization pre-pass above so each leg realizes exactly
+			// JETV2_SCALE. Both legs enter, so the subleading jet gets the same v2
+			// as the leading one. Leg 1's angle to the event plane is the tree's
+			// own dpsi2 branch; leg 2's is rebuilt from psi2 and truth_phi2, which
+			// the tree stores no dpsi2 for. Both use the TRUTH phi, so the weight
+			// is a property of the generated event and does not depend on whether
+			// the pair reconstructed -- Fill, Miss and Fake pairs are all weighted
+			// the same way, which is what keeps the miss/fake fractions (and hence
+			// the efficiency folded into the response) internally consistent.
+			double psi2_weight = 1.0;
+			if ( jetv2_sys )
+			{
+				const double c1 = std::cos( 2.0 * b_dpsi2[istream] );
+				const double c2 = std::cos( 2.0 * jetv2_dpsi2( psi2_val, truth_phi2_val ) );
+				psi2_weight = 1.0 + jetv2_amp * ( c1 + c2 );
+				jetv2_weight_sum += psi2_weight;
+				jetv2_c1_sum += psi2_weight * c1;
+				jetv2_c2_sum += psi2_weight * c2;
+				jetv2_weight_n++;
+				h_jetv2_weight->Fill(psi2_weight);
+			}
+
+			double event_scale 			= scale_factor[isample] * extra_scale[istream] * psi2_weight;
+			
 			double mbd_vertex_scale 	= 1.0;
 			double sumeT_scale 			= 1.0;
 			double centrality_scale 	= 1.0;
 
-			// leg 1's truth_pt is truth_jet_pT->at(0) in dijet_matching.C --
-			// the highest-pT truth jet in the event, no acceptance cut
-			// applied -- the same quantity the old ntuple called maxpttruth.
-			const float maxpttruth_val = truth_pt0;
+			// The event's highest-pT truth jet, no acceptance cut applied --
+			// the same quantity the old ntuple called maxpttruth. Read
+			// straight off dijet_pair_matching_v3.C's truth_lead_pt branch
+			// rather than std::max(truth_pt0, truth_pt1): those two are only
+			// the truth dijet CANDIDATE's legs (truth_idx1=0, truth_idx2=1),
+			// which sit at -999 whenever the event has fewer than two truth
+			// jets or the leading leg was dropped by the slimming -- both
+			// cases where the real leading truth jet still exists and this
+			// veto should still see it.
+			const float maxpttruth_val = truth_lead_pt_val;
+
 			const bool in_maxpttruth_range = ( maxpttruth_val >= sample_boundary[isample] && maxpttruth_val < sample_boundary[isample+1] );
 			if ( !in_maxpttruth_range )
 			{
@@ -857,11 +1069,13 @@ int createResponse_exclusive_v2_AA (
 			}
 
 			if ( event_scale <= 0 && VETO_NULL_WEIGHTS ) { continue; }
+			
 			// leg 1 (index 0 in dijet_matching.C) is always the
 			// truth-leading jet and leg 2 the truth-subleading one --
 			// idxT = {0, 1} indexes directly into the pT-sorted
 			// truth_jet_pT vector, so truth_pt0 >= truth_pt1 is guaranteed
 			// by construction, not just the common case.
+			
 			const float e1 = truth_pt0;
 			const float e2 = truth_pt1;
 			float es1 = reco_pt0;
@@ -949,6 +1163,7 @@ int createResponse_exclusive_v2_AA (
 			if (miss_pair) { ++n_miss[isample]; }
 			if (fake_pair) { ++n_fake[isample]; }
 			if (real_pair) { ++n_real[isample]; }
+			
 			// prior_qa::weight_bin() owns the flat-index-to-ROOT-bin convention and is
 			// the same call the QA above uses, so the plots cannot silently disagree
 			// with what is applied here. It returns k+1 for flat index
@@ -968,6 +1183,8 @@ int createResponse_exclusive_v2_AA (
 					flat_scale = 1.0;
 				}
 				event_scale *= flat_scale;
+
+				// rewight jet
 			}
 
 			if ( miss_pair )
@@ -1113,6 +1330,27 @@ int createResponse_exclusive_v2_AA (
 	{
 		std::cout << "Sample " << i << " pairs -- Fill: " << n_real[i] << ", Miss: " << n_miss[i]
 		          << ", Fake: " << n_fake[i] << ", Skip: " << n_skip[i] << ", UESub: " << n_uesub[i] << std::endl;
+	}
+
+	if ( jetv2_sys && jetv2_weight_n > 0 )
+	{
+		// Closure on the pre-pass: this is the unweighted mean of w over the
+		// pairs the main loop actually kept (a slightly tighter set than the
+		// pre-pass, which does not apply the centrality/reweight cuts), and the
+		// realized per-leg v2 that the response was built with.
+		const double mean_w = jetv2_weight_sum / (double) jetv2_weight_n;
+		const double v2_leg1 = jetv2_c1_sum / jetv2_weight_sum;
+		const double v2_leg2 = jetv2_c2_sum / jetv2_weight_sum;
+		std::cout << "JetV2 closure -- requested v2 = " << jetv2_scale
+		          << ", realized leg1 = " << v2_leg1 << ", leg2 = " << v2_leg2
+		          << ", <weight> = " << mean_w
+		          << " over " << jetv2_weight_n << " pairs" << std::endl;
+		if ( std::fabs(v2_leg1 - jetv2_scale) > 0.1 * jetv2_scale
+		  || std::fabs(v2_leg2 - jetv2_scale) > 0.1 * jetv2_scale )
+		{
+			std::cout << "  WARNING: realized jet v2 is more than 10% off the requested value."
+			          << std::endl;
+		}
 	}
 
 	h_flat_reco_pt1pt2->Scale(.5);
@@ -1717,6 +1955,7 @@ int createResponse_exclusive_v2_AA (
 			h_sumeT->Write();
 			h_pt1pt2->Write();
 			h_e1e2->Write();
+			h_jetv2_weight->Write();
 			// Unweighted trimming inputs, saved so minentries_truth/minentries_link
 			// can be tuned offline without re-running the event loop.
 			h_count_flat_truth_pt1pt2->Write();

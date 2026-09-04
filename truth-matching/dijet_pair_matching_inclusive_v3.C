@@ -175,6 +175,36 @@ namespace DijetPairInclusiveV3
         }
     }
 
+    // The event's hardest truth jet's pT (original truth index 0),
+    // independent of any pairing. Because the pairing here is reco-driven,
+    // truth_pt1/truth_pt2 on a given row are whichever truth jets matched
+    // THAT pairing's reco legs -- not necessarily the event's actual
+    // leading truth jet -- so this is looked up separately. Truth index 0
+    // is found either among the matched truth jets (match_truth_idx) or,
+    // if it has no reco match, among acc_truth_idx (when the caller has
+    // it available); -999 if it was dropped by the slimming (unmatched
+    // AND outside the eta acceptance) or the event has no truth jets.
+    inline float find_truth_lead_pt(
+        const std::vector< int >   & match_truth_idx,
+        const std::vector< float > & match_truth_pT,
+        const std::vector< int >   * acc_truth_idx,
+        const std::vector< float > * acc_truth_pT
+    )
+    {
+        for ( size_t s = 0; s < match_truth_idx.size(); ++s )
+        {
+            if ( match_truth_idx.at( s ) == 0 ) return match_truth_pT.at( s );
+        }
+        if ( acc_truth_idx && acc_truth_pT )
+        {
+            for ( size_t k = 0; k < acc_truth_idx->size(); ++k )
+            {
+                if ( acc_truth_idx->at( k ) == 0 ) return acc_truth_pT->at( k );
+            }
+        }
+        return -999.0f;
+    }
+
     // Classifies the pairing ( accepted[0], accepted[partner] ). partner
     // == 1 is the leading pair (pT1,pT2), partner == 2 is (pT1,pT3), and
     // so on.
@@ -386,6 +416,14 @@ int dijet_pair_matching_inclusive_v3(
     std::vector< float > * match_truth_parton_pT  = nullptr;
     std::vector< float > * match_dr               = nullptr;
 
+    // Read only for find_truth_lead_pt() -- the event's true leading
+    // truth jet may be unmatched, in which case it lives in this
+    // collection rather than match_*. Everything else in this macro is
+    // reco-driven and deliberately does not touch acc_truth_*; see the
+    // header.
+    std::vector< int >   * acc_truth_idx = nullptr;
+    std::vector< float > * acc_truth_pT  = nullptr;
+
     const bool has_all = has_branch( "match_reco_idx" )
                       && has_branch( "match_truth_idx" )
                       && has_branch( "match_reco_pT" )
@@ -398,9 +436,10 @@ int dijet_pair_matching_inclusive_v3(
         return -1;
     }
 
-    const bool has_flavor = has_branch( "match_truth_flavor" );
-    const bool has_unsub  = has_branch( "match_reco_unsub_pT" );
-    const bool has_dr     = has_branch( "match_dr" );
+    const bool has_flavor    = has_branch( "match_truth_flavor" );
+    const bool has_unsub     = has_branch( "match_reco_unsub_pT" );
+    const bool has_dr        = has_branch( "match_dr" );
+    const bool has_acc_truth = has_branch( "acc_truth_idx" ) && has_branch( "acc_truth_pT" );
 
     if ( has_branch( "n_truth_jets" ) ) enable( "n_truth_jets", &n_truth_jets );
     if ( has_branch( "n_reco_jets" ) )  enable( "n_reco_jets", &n_reco_jets );
@@ -424,6 +463,11 @@ int dijet_pair_matching_inclusive_v3(
         enable( "match_truth_flavor", &match_truth_flavor );
         enable( "match_truth_parton_pT", &match_truth_parton_pT );
     }
+    if ( has_acc_truth )
+    {
+        enable( "acc_truth_idx", &acc_truth_idx );
+        enable( "acc_truth_pT", &acc_truth_pT );
+    }
 
     //----------------------------------------------------------------
     // output -- branch-for-branch the dijet_pair_matching_inclusive_v2.C
@@ -435,6 +479,7 @@ int dijet_pair_matching_inclusive_v3(
     int   o_event_id = -1, o_cent = -1, o_is_minbias = 0;
     float o_zvrtx = 0.0, o_mbd_q = -999.0, o_sumeT = -999.0;
     float o_psi2 = -999.0, o_psi3 = -999.0, o_dpsi2 = -999.0;
+    float o_truth_lead_pt = -999.0;
 
     int   o_pair_partner_rank = -1, o_n_truth_jets = 0;
     int   o_category = -1, o_truth_in_acc = 0, o_reco_pair = 0, o_reco_in_acc = 0;
@@ -474,6 +519,13 @@ int dijet_pair_matching_inclusive_v3(
         tout -> Branch( "dpsi2", &o_dpsi2, "dpsi2/F" );
     }
     if ( has_psi3 )     tout -> Branch( "psi3", &o_psi3, "psi3/F" );
+    // the event's hardest truth jet's pT (truth index 0), independent of
+    // which reco pairing this row is -- an event-level variable like
+    // sumeT/cent, constant across all pair_partner_rank rows of the same
+    // event, so it can be filtered on regardless of category or rank.
+    // -999 if that jet was dropped by the slimming (unmatched AND outside
+    // the eta acceptance) or the event has no truth jets.
+    tout -> Branch( "truth_lead_pt", &o_truth_lead_pt, "truth_lead_pt/F" );
 
     // k+1, so rank 2 is the leading pair (pT1,pT2), rank 3 is (pT1,pT3).
     // Here k is the RECO rank of the subleading leg -- the pairing is
@@ -596,6 +648,9 @@ int dijet_pair_matching_inclusive_v3(
         if ( accepted.size() < 2 ) continue; // no pairing possible
         ++n_events;
 
+        const float truth_lead_pt = DijetPairInclusiveV3::find_truth_lead_pt(
+            *match_truth_idx, *match_truth_pT, acc_truth_idx, acc_truth_pT );
+
         int last_partner = static_cast< int >( accepted.size() ) - 1;
         if ( max_partner_rank > 0 && ( max_partner_rank - 1 ) < last_partner )
         {
@@ -650,6 +705,7 @@ int dijet_pair_matching_inclusive_v3(
             o_dpsi2      = has_psi2
                          ? AnaUtils::get_dpsi2( psi2, match_truth_phi -> at( t1 ) )
                          : -999.0f;
+            o_truth_lead_pt = truth_lead_pt;
 
             o_pair_partner_rank = partner + 1;
             o_n_truth_jets = n_truth_jets;

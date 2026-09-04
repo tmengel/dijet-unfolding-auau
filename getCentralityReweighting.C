@@ -21,6 +21,11 @@ void getCentralityReweighting(const int cone_size = 4, const int centrality_bin 
                         std::fabs(flow_v33_scale - 1.0) > 1e-6;
   Int_t inclusive_sys = rb.get_inclusive_sys();
   Int_t flavor_sys = rb.get_flavor_sys();
+  // Jet-v2 cross-check -- see createResponse_exclusive_v2_AA.cxx. Only the
+  // output naming matters here: the reweighting histograms this writes are
+  // read back by that macro under the same sys_name.
+  const double jetv2_scale = rb.get_jetv2_scale();
+  const bool jetv2_sys = std::fabs(jetv2_scale - 1.0) > 1e-6;
   Double_t JES_sys = rb.get_jes_sys();
   Double_t JER_sys = rb.get_jer_sys();
   Int_t prior_sys = rb.get_prior_sys();
@@ -38,6 +43,9 @@ void getCentralityReweighting(const int cone_size = 4, const int centrality_bin 
 
   if (inclusive_sys)
     sys_name = "INCLUSIVE";
+
+  if (jetv2_sys)
+    sys_name = rb.get_jetv2_systematic_name();
 
 	const bool flavor_mix = (flavor_sys == 3);
 	const double flavor_qq_fraction = rb.get_flavor_qq_fraction();

@@ -12,16 +12,16 @@ class read_binning
 {
 public:
   read_binning(const std::string configfile)
-    {
-      fjer = new TFile(jerfile.c_str(), "r");
-      
-      penv = new TEnv(configfile.c_str());
-      // tntuple_location = std::getenv("DIJET_TNTUPLE_PATH");
-      // code_location = std::getenv("DIJET_UNFOLDING_PATH");
-      // sim_location = std::getenv("AUAU_SIM_PATH");
-      // auau_config = std::getenv("AUAU_CONFIG");
+  {
+    fjer = new TFile(jerfile.c_str(), "r");
+    
+    penv = new TEnv(configfile.c_str());
+    // tntuple_location = std::getenv("DIJET_TNTUPLE_PATH");
+    // code_location = std::getenv("DIJET_UNFOLDING_PATH");
+    // sim_location = std::getenv("AUAU_SIM_PATH");
+    // auau_config = std::getenv("AUAU_CONFIG");
 
-    }
+  }
   std::string get_tntuple_location() 
   {
     return tntuple_location;      
@@ -111,6 +111,18 @@ public:
   
   Int_t get_inclusive_sys(){ return penv->GetValue("INCLUSIVE", 0); }
   Int_t get_flavor_sys(){ return penv->GetValue("FLAVOR", 0); }  // 0 = none, 1 = qq, 2 = qg/gg, 3 = qq/qg+gg mix
+  
+  // Jet-v2 cross-check: JETV2_SCALE is the injected single-jet v2 itself
+  // (0.03 for the 3% cross-check), not a multiplier. The 1.0 default is an
+  // out-of-range sentinel meaning "off", the same way FLOW_V22_SCALE flags
+  // itself. JETV2_SYSTEMATIC_NAME tags the response/unfold/QA outputs so
+  // several v2 values can coexist without colliding (JETV23, JETV25, ...).
+  double get_jetv2_scale(){ return penv->GetValue("JETV2_SCALE", 1.0); }
+  std::string get_jetv2_systematic_name()
+  {
+    return penv->GetValue("JETV2_SYSTEMATIC_NAME", "JETV2");
+  }
+
   // Target QQ share (by cross-section-weighted yield, not raw entries) of the
   // response when FLAVOR == 3; the remainder (1 - this) is qg/gg. Unused for
   // FLAVOR == 0/1/2.

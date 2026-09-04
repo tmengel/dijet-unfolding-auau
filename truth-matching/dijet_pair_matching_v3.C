@@ -564,6 +564,7 @@ int dijet_pair_matching_v3(
     int   o_event_id = -1, o_cent = -1, o_is_minbias = 0;
     float o_zvrtx = 0.0, o_mbd_q = -999.0, o_sumeT = -999.0;
     float o_psi2 = -999.0, o_psi3 = -999.0, o_dpsi2 = -999.0;
+    float o_truth_lead_pt = -999.0;
 
     int   o_category = -1, o_truth_in_acc = 0, o_reco_pair = 0, o_reco_in_acc = 0;
     int   o_truth_fail1 = 0, o_truth_fail2 = 0;
@@ -603,6 +604,13 @@ int dijet_pair_matching_v3(
         tout -> Branch( "dpsi2", &o_dpsi2, "dpsi2/F" );
     }
     if ( has_psi3 )     tout -> Branch( "psi3", &o_psi3, "psi3/F" );
+    // the event's hardest truth jet's pT (truth index 0), filled
+    // regardless of this row's category or truth_in_acc -- an
+    // event-level variable like sumeT/cent, so it can be filtered on
+    // without regard to whether the truth pair was accepted. -999 if
+    // that jet was dropped by the slimming (unmatched AND outside the
+    // eta acceptance) or the event has no truth jets.
+    tout -> Branch( "truth_lead_pt", &o_truth_lead_pt, "truth_lead_pt/F" );
 
     tout -> Branch( "category", &o_category, "category/I" );
     tout -> Branch( "truth_in_acc", &o_truth_in_acc, "truth_in_acc/I" );
@@ -788,6 +796,7 @@ int dijet_pair_matching_v3(
         o_sumeT      = sumeT;
         o_psi2       = psi2;
         o_psi3       = psi3;
+        o_truth_lead_pt = ( !truth.empty() && truth[0].known ) ? truth[0].pT : -999.0f;
 
         o_category     = r.category;
         o_truth_in_acc = r.truth_in_acc;

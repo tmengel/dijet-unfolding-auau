@@ -154,6 +154,7 @@ int createResponse_exclusive_v2_AA_inclusive (
 	int   b_reco_pair[3];
 	float b_truth_pt1[3];
 	float b_truth_pt2[3];
+	float b_truth_lead_pt[3];
 	float b_reco_pt1[3];
 	float b_reco_pt2[3];
 
@@ -183,6 +184,7 @@ int createResponse_exclusive_v2_AA_inclusive (
 		texcl[i]->SetBranchAddress("reco_pair", &b_reco_pair[i]);
 		texcl[i]->SetBranchAddress("truth_pt1", &b_truth_pt1[i]);
 		texcl[i]->SetBranchAddress("truth_pt2", &b_truth_pt2[i]);
+		texcl[i]->SetBranchAddress("truth_lead_pt", &b_truth_lead_pt[i]);
 		texcl[i]->SetBranchAddress("reco_pt1", &b_reco_pt1[i]);
 		texcl[i]->SetBranchAddress("reco_pt2", &b_reco_pt2[i]);
 	}
@@ -648,6 +650,7 @@ int createResponse_exclusive_v2_AA_inclusive (
 			const int cat0 = b_category[isample];
 			const float truth_pt0 = b_truth_pt1[isample];
 			const float truth_pt1 = b_truth_pt2[isample];
+			const float truth_lead_pt_val = b_truth_lead_pt[isample];
 			const bool has_reco_pair = ( b_reco_pair[isample] != 0 );
 			const float reco_pt0 = has_reco_pair ? b_reco_pt1[isample] : 0.0F;
 			const float reco_pt1 = has_reco_pair ? b_reco_pt2[isample] : 0.0F;
@@ -665,15 +668,19 @@ int createResponse_exclusive_v2_AA_inclusive (
 			double sumeT_scale 			= 1.0;
 			double centrality_scale 	= 1.0;
 
-			// leg 1's truth_pt is truth_jet_pT->at(0) in dijet_matching.C --
-			// the highest-pT truth jet in the event, no acceptance cut
-			// applied -- the same quantity the old ntuple called maxpttruth.
-			const float maxpttruth_val = truth_pt0;
+			// The event's highest-pT truth jet, no acceptance cut applied --
+			// the same quantity the old ntuple called maxpttruth. Read
+			// straight off the truth_lead_pt branch rather than truth_pt0
+			// (=truth_pt1, this row's truth_idx1 leg): on a reco-driven
+			// pairing (dijet_pair_matching_inclusive_v3.C) truth_idx1 is
+			// whichever truth jet matched the leading RECO jet, not
+			// necessarily the event's actual leading truth jet.
+			const float maxpttruth_val = truth_lead_pt_val;
 			const bool in_maxpttruth_range = ( maxpttruth_val >= sample_boundary[isample] && maxpttruth_val < sample_boundary[isample+1] );
-			if ( !in_maxpttruth_range )
-			{
-				continue;
-			}
+			// if ( !in_maxpttruth_range )
+			// {
+			// 	continue;
+			// }
 
 			const bool in_centrality_bin = ( cent_val >= icentrality_bins[centrality_bin] && cent_val < icentrality_bins[centrality_bin+1] );
 			if ( !in_centrality_bin && DO_CENT_CUT )

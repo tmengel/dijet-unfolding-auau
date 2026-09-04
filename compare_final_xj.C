@@ -53,14 +53,7 @@ void style_graph(TGraphAsymmErrors *g, int color)
 
 } // namespace
 
-// Compare one x_J spectrum from two final_hists ROOT files.
-//
-// Example:
-// root -l -q 'compare_final_xj.C("old/final_hists_AA_cent_0_r03.root",\
-//                                "new/final_hists_AA_cent_0_r03.root",\
-//                                0,1,"old","new","compare_xj_range0.pdf",false)'
-//
-// Set compare_pp=true to compare h_final_xj_pp_unfold... instead of Au+Au.
+
 void compare_final_xj(const char *file_v1,
                       const char *file_v2,
                       int irange = 0,

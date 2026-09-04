@@ -131,6 +131,11 @@ int unfoldData_noempty_AA(
 	const bool flow_sys = std::fabs(flow_v22_scale - 1.0) > 1e-6 || std::fabs(flow_v33_scale - 1.0) > 1e-6;
 	
 	const int zyam_sys = rb.get_zyam_sys();
+	// Jet-v2 cross-check -- see createResponse_exclusive_v2_AA.cxx. Nothing to
+	// apply on the data side (the weight is an MC-truth reweighting); this only
+	// has to resolve the same sys_name so the response/unfold files line up.
+	const double jetv2_scale = rb.get_jetv2_scale();
+	const bool jetv2_sys = std::fabs(jetv2_scale - 1.0) > 1e-6;
 	const int inclusive_sys = rb.get_inclusive_sys();
 	const int flavor_sys = rb.get_flavor_sys();
 	const double JES_sys = rb.get_jes_sys();
@@ -157,6 +162,11 @@ int unfoldData_noempty_AA(
 	{
 		using_sys = 1;
 		sys_name = "INCLUSIVE";
+	}
+	if ( jetv2_sys )
+	{
+		using_sys = 1;
+		sys_name = rb.get_jetv2_systematic_name();
 	}
 	// if (flavor_sys == 1)
 	// {
