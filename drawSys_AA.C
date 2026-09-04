@@ -57,13 +57,14 @@ const int color_data = kBlue - 9;
 const float marker_data = 20;
 const float msize_data = 0.9;
 const float lsize_data = 1.1;
-void drawSys_AA(const int cone_size = 3, const int centrality_bin = 0)
+void drawSys_AA(const int cone_size = 3, const int centrality_bin = 0,
+                const std::string configfile = "/sphenix/user/tmengel/dijet-ana-auau/macros/unfolding/dijet-unfolding-auau/configs/binning_AA.config")
 {
 
   gStyle->SetOptStat(0);
   dlutility::SetyjPadStyle();
 
-  read_binning rb(std::getenv("AUAU_CONFIG"));
+  read_binning rb(configfile.c_str());
 
   bool ispp = (centrality_bin < 0);
   std::string system_string = (ispp?"pp":"AA_cent_" + std::to_string(centrality_bin));

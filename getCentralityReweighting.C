@@ -39,11 +39,29 @@ void getCentralityReweighting(const int cone_size = 4, const int centrality_bin 
   if (inclusive_sys)
     sys_name = "INCLUSIVE";
 
-  if (flavor_sys == 1)
-    sys_name = "QQ";
+	const bool flavor_mix = (flavor_sys == 3);
+	const double flavor_qq_fraction = rb.get_flavor_qq_fraction();
+	const std::string flavor_suffix = (flavor_sys == 1) ? "_qq" : (flavor_sys == 2) ? "_qg_gg" : "";
 
-  if (flavor_sys == 2)
-    sys_name = "QGGG";
+	int using_sys = 0;
+
+    if (flavor_sys == 1)
+	{
+		using_sys = 1;
+		sys_name = "QQ";
+	}
+	else if (flavor_sys == 2)
+	{
+		using_sys = 1;
+		sys_name = "QGGG";
+	}
+	else if (flavor_sys == 3)
+	{
+		using_sys = 1;
+		// Percent-QQ tag so e.g. 0.5 and 0.2 land on distinct, non-colliding
+		// response/unfold/QA output names (MIX50, MIX20, ...).
+		sys_name = Form("MIX%02d", (int) std::lround(flavor_qq_fraction * 100.0));
+	}
 
   if (JER_sys < 0)
     sys_name = "negJER";

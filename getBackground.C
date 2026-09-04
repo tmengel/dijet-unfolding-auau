@@ -119,12 +119,17 @@ void getBackground(
 	t->SetBranchStatus("zvrtx", 1);
 	t->SetBranchStatus("sumeT", 1);
 	t->SetBranchStatus("jet_pT", 1);
-	t->SetBranchStatus("jet_comp_pT", 1);
+	bool has_jet_comp_pT = (t->GetBranch("jet_comp_pT") != nullptr);
+	if ( has_jet_comp_pT ) t->SetBranchStatus("jet_comp_pT", 1);
+	else t->SetBranchStatus("jet_unsub_pT", 1);
+
 	t->SetBranchStatus("jet_E", 1);
 	t->SetBranchStatus("jet_unsub_E", 1);
 	t->SetBranchStatus("jet_eta", 1);
 	t->SetBranchStatus("jet_phi", 1);
-	t->SetBranchStatus("jet_accept_eta", 1);
+	const bool has_jet_accept_eta = (t->GetBranch("jet_accept_eta") != nullptr);
+	if ( has_jet_accept_eta ) t->SetBranchStatus("jet_accept_eta", 1);
+
 	t->SetCacheSize(256 * 1024 * 1024);
 	t->AddBranchToCache("*", kTRUE);
 	std::vector<float> *reco_jet_pt = 0;
@@ -139,12 +144,17 @@ void getBackground(
 	float sumeT = 0;
 	t->SetBranchAddress("cent", &centrality);
 	t->SetBranchAddress("jet_pT", &reco_jet_pt);
-	t->SetBranchAddress("jet_comp_pT", &reco_jet_pt_unsub); // renamed: v004 background-quality discriminant is jet_comp_pT, not jet_unsub_pT
+	// t->SetBranchAddress("jet_comp_pT", &reco_jet_pt_unsub); // renamed: v004 background-quality discriminant is jet_comp_pT, not jet_unsub_pT
+	if ( has_jet_comp_pT ) t->SetBranchAddress("jet_comp_pT", &reco_jet_pt_unsub);
+  	else t->SetBranchAddress("jet_unsub_pT", &reco_jet_pt_unsub);
+
+ 
 	t->SetBranchAddress("jet_E", &reco_jet_e);
 	t->SetBranchAddress("jet_unsub_E", &reco_jet_e_unsub);
 	t->SetBranchAddress("jet_eta", &reco_jet_eta);
 	t->SetBranchAddress("jet_phi", &reco_jet_phi);
-	t->SetBranchAddress("jet_accept_eta", &reco_jet_accept_eta);
+	// t->SetBranchAddress("jet_accept_eta", &reco_jet_accept_eta);
+	if ( has_jet_accept_eta ) t->SetBranchAddress("jet_accept_eta", &reco_jet_accept_eta);
 	t->SetBranchAddress("zvrtx", &mbd_vertex_z);
 	t->SetBranchAddress("sumeT", &sumeT);
 
@@ -199,7 +209,17 @@ void getBackground(
 	}
 
 	TF1 *fcut = new TF1("fcut","[0]+[1]*TMath::Exp(-[2]*x)",0.0,100.0);
-  	fcut->SetParameters(0,42.9,0.0306);
+  	// fcut->SetParameters(0,42.9,0.0306);
+	if ( has_jet_accept_eta ) 
+	{
+		// new verison of file
+		// fcut -> SetParameters( 0, 42.9,0.0306 );
+		fcut -> SetParameters( 7.95, 34.3, 0.047 );
+	}
+	else 
+	{
+		fcut -> SetParameters( 0, 40.0, 0.035 );
+	}
   	for (int i = 0; i < total_entries; i++)
     {
 		t->GetEntry(i);
@@ -224,9 +244,11 @@ void getBackground(
 
 			if (reco_jet_pt->at(j) < reco_subleading_cut) continue;
 			if (reco_jet_e->at(j) < 0) continue;
-			// if (reco_jet_e_unsub->at(j) < 0) continue;
-			if (!reco_jet_accept_eta->at(j)) continue;
-
+			if (reco_jet_e_unsub->at(j) < 0) continue;
+			// if (!reco_jet_accept_eta->at(j)) continue;
+			// if (!reco_jet_accept_eta->at(j)) continue;
+      		bool eta_good = has_jet_accept_eta ? (reco_jet_accept_eta->at(j) == 1)  : (fabs(reco_jet_eta->at(j)) < 0.8f);
+      		if (!eta_good) continue;
 			float pt_unsub = reco_jet_pt_unsub->at(j) - reco_jet_pt->at(j);
 
 	  		if (pt_unsub > cut_value)
@@ -265,10 +287,13 @@ void getBackground(
 			if (reco_jet_pt->at(j) < reco_subleading_cut) continue;
 			if (reco_jet_e->at(j) < 0) continue;
 			if (reco_jet_e_unsub->at(j) < 0) continue;
-			if (!reco_jet_accept_eta->at(j)) continue;
+			// if (reco_jet_e_unsub->at(j) < 0) continue;
+			// if (!reco_jet_accept_eta->at(j)) continue;
+      		bool eta_good = has_jet_accept_eta ? (reco_jet_accept_eta->at(j) == 1)  : (fabs(reco_jet_eta->at(j)) < 0.8f);
+      		if (!eta_good) continue;
 			float pt_unsub = reco_jet_pt_unsub->at(j) - reco_jet_pt->at(j);
 
-			if (pt_unsub > cut_value)
+	  		if (pt_unsub > cut_value)
 			{
 				bad_event = 1;
 				continue;

@@ -64,7 +64,7 @@ void testPriorReweight_AA(const int cone_size = 3,
   gStyle->SetOptTitle(0);
   PlotUtils::set_sphenix_style();
 
-  read_binning rb(std::getenv("AUAU_CONFIG"));
+  read_binning rb("/sphenix/user/tmengel/dijet-ana-auau/macros/unfolding/dijet-unfolding-auau/configs/binning_AA.config");
 
   const int nbins = rb.get_nbins();
   float ipt_bins[nbins + 1];

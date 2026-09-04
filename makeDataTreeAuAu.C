@@ -11,84 +11,52 @@
 #include "TNtuple.h"
 #include "TTree.h"
 
-#include "read_binning.h"
 
 
-using std::cout;
-using std::endl;
-
-struct jet
-{
-  int id;
-  float pt = 0;
-  float eta = 0;
-  float phi = 0;
-  float emcal = 0;
-  int matched = 0;
-  float dR = 1;
-};
-
-const bool Debug = false;
-
-const float dRcut = 1.3;
-float cone_size = 4;
-const float truth_cut = 3;
-const float reco_cut = 8;
-
-const float dphicut = 0;//3*TMath::Pi()/4.;
-const float dphicutloose = 0;//3*TMath::Pi()/4.;
-
-const float vertex_cut = 60;
-// The v004 data file carries a precomputed jet_accept_eta flag (per-jet
-// fiducial acceptance, including any bad-tower/sector exclusions) instead of
-// a hard |eta| cut, so no etacut constant is needed here anymore.
-
-void makeDataTreeAuAu(const int cone_size_int = 3, const int isAuAu = 1,
-                      const std::string infile = "/home/tmengel/PPG14/rootfiles/v001_20260720/run2auau_rho_jet.root",
-                      const std::string outfile = "",
-                      const std::string configfile = "binning_AA.config")
+void makeDataTreeAuAu(
+  const int cone_size = 3, 
+  const std::string infile = "/home/tmengel/PPG14/rootfiles/v001_20260720/run2auau_rho_jet.root",
+  const std::string outfile = ""
+)
 {
 
-  read_binning rb(configfile.c_str());
 
-  cone_size = (float) cone_size_int;
   std::cout << cone_size << std::endl;
-  std::string mycopy = infile;
-  mycopy = mycopy.substr(mycopy.rfind("/")+1);
-  std::cout << mycopy << std::endl;
-  std::string newname = "TNTUPLE_DIJET_r0" + std::to_string(cone_size_int);
-  std::string oldname = "run2auau";
-  const std::size_t oldpos = mycopy.find(oldname);
-  if (oldpos != std::string::npos)
-    mycopy.replace(oldpos, oldname.length(), newname);
-  else
-    mycopy = newname + "_" + mycopy;
-  std::string newfile = outfile.empty() ? rb.get_tntuple_location() + "/" + mycopy : outfile;
+
+  std::string newfile = outfile;
   std::cout << newfile << std::endl;
+
+  const float vertex_cut = 60;
+  const float dphicut = 0;
+  const float reco_cut = 8;
 
   TFile *f = new TFile(infile.c_str(), "r");
   TTree *t = (TTree*) f->Get("T");
   if (!t)
-    {
-      std::cerr << "Could not find tree T in " << infile << std::endl;
-      return;
-    }
+  {
+    std::cerr << "Could not find tree T in " << infile << std::endl;
+    return;
+  }
 
   t->SetBranchStatus("*", 0);
   t->SetBranchStatus("cent", 1);
   t->SetBranchStatus("sumeT", 1);
   t->SetBranchStatus("jet_pT", 1);
-  t->SetBranchStatus("jet_comp_pT", 1);
+  
+  bool has_jet_comp_pT = (t->GetBranch("jet_comp_pT") != nullptr);
+  if ( has_jet_comp_pT ) t->SetBranchStatus("jet_comp_pT", 1);
+  else t->SetBranchStatus("jet_unsub_pT", 1);
+
   t->SetBranchStatus("jet_E", 1);
   t->SetBranchStatus("jet_unsub_E", 1);
   t->SetBranchStatus("jet_eta", 1);
   t->SetBranchStatus("jet_phi", 1);
-  t->SetBranchStatus("jet_accept_eta", 1);
+  const bool has_jet_accept_eta = (t->GetBranch("jet_accept_eta") != nullptr);
+  if ( has_jet_accept_eta ) t->SetBranchStatus("jet_accept_eta", 1);
+
   t->SetBranchStatus("zvrtx", 1);
   t->SetCacheSize(256 * 1024 * 1024);
   t->AddBranchToCache("*", kTRUE);
-
-
 
   int centrality;
   int minbias;
@@ -108,12 +76,14 @@ void makeDataTreeAuAu(const int cone_size_int = 3, const int isAuAu = 1,
   t->SetBranchAddress("cent", &centrality);
   t->SetBranchAddress("sumeT", &sumeT);
   t->SetBranchAddress("jet_pT", &reco_jet_pt);
-  t->SetBranchAddress("jet_comp_pT", &reco_jet_pt_unsub); // renamed
+  if ( has_jet_comp_pT ) t->SetBranchAddress("jet_comp_pT", &reco_jet_pt_unsub);
+  else t->SetBranchAddress("jet_unsub_pT", &reco_jet_pt_unsub);
+
   t->SetBranchAddress("jet_E", &reco_jet_e);
   t->SetBranchAddress("jet_unsub_E", &reco_jet_e_unsub);
   t->SetBranchAddress("jet_eta", &reco_jet_eta);
   t->SetBranchAddress("jet_phi", &reco_jet_phi);
-  t->SetBranchAddress("jet_accept_eta", &reco_jet_accept_eta);
+  if ( has_jet_accept_eta ) t->SetBranchAddress("jet_accept_eta", &reco_jet_accept_eta);
   t->SetBranchAddress("zvrtx", &mbd_vertex_z);
 
   int entries = t->GetEntries();
@@ -124,13 +94,21 @@ void makeDataTreeAuAu(const int cone_size_int = 3, const int isAuAu = 1,
 
   std::pair<int, float> id_leaders[2];
   TF1 *fcut = new TF1("fcut","[0]+[1]*TMath::Exp(-[2]*x)",0.0,100.0);
-  fcut->SetParameters(0,42.9,0.0306);
+  if ( has_jet_accept_eta ) 
+  {
+    // new verison of file
+    // fcut -> SetParameters( 0, 42.9,0.0306 );
+    fcut -> SetParameters( 7.95, 34.3, 0.047 );
+  }
+  else 
+  {
+    fcut -> SetParameters( 0, 40.0, 0.035 );
+  }
   for (int i = 0; i < entries; i++)
   {
       t->GetEntry( i);
 
-      if (i % 100000 == 0) std::cout << "Event: " << i << " / " << entries << "\r" << std::flush;
-
+      if ( i % (entries /10 ) == 0) std::cout << "Event: " << i << " / " << entries << "\r" << std::flush;
       if (fabs(mbd_vertex_z) > vertex_cut) continue;
 
       int trigger_fired = 1;
@@ -144,10 +122,11 @@ void makeDataTreeAuAu(const int cone_size_int = 3, const int isAuAu = 1,
       for (int j = 0; j < nrecojets;j++)
 	    {
         if (reco_jet_pt->at(j) < reco_cut) continue;
+        if ( reco_jet_e->at(j) < 0 ) continue;
+        if ( reco_jet_e_unsub->at(j) < 0 ) continue;
+        bool eta_good = has_jet_accept_eta ? (reco_jet_accept_eta->at(j) == 1)  : (fabs(reco_jet_eta->at(j)) < 0.8f);
+        if (!eta_good) continue;
 
-        if (reco_jet_e->at(j) < 0) continue;
-        // if (reco_jet_e_unsub->at(j) < 0) continue;
-        if (!reco_jet_accept_eta->at(j)) continue;
         float pt_unsub = reco_jet_pt_unsub->at(j) - reco_jet_pt->at(j);
 
         if (pt_unsub > cut_value)
@@ -179,7 +158,7 @@ void makeDataTreeAuAu(const int cone_size_int = 3, const int isAuAu = 1,
       if (dphir > TMath::Pi()) dphir = 2*TMath::Pi() - dphir;
       const double detar = fabs(reco_jet_eta->at(lead) - reco_jet_eta->at(sub));
 
-      if (dphir >= dphicut && lead_pt >= 15 && sub_pt >= 5) tn_dijet->Fill(lead_pt, sub_pt, dphir, detar, trigger_fired, nrecojets, centrality, mbd_vertex_z, sumeT);
+      if (dphir >= dphicut && lead_pt >= 20 && sub_pt >= 8) tn_dijet->Fill(lead_pt, sub_pt, dphir, detar, trigger_fired, nrecojets, centrality, mbd_vertex_z, sumeT);
 
   }
   std::cout << std::endl;

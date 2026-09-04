@@ -121,9 +121,10 @@ void copyInputAndWriteVariation(TFile *input, const TString &outputPath,
 void makeFlowModulationPreload_AA(
   const int cone_size = 3, const int centrality_bin = 0,
   const std::string down_config = "binning_COMBDown_AA.config",
-  const std::string up_config = "binning_COMBUp_AA.config")
+  const std::string up_config = "binning_COMBUp_AA.config",
+  const std::string nominal_config = "binning_AA.config")
 {
-  read_binning nominalBinning(std::getenv("AUAU_CONFIG"));
+  read_binning nominalBinning(nominal_config.c_str());
   read_binning downBinning(down_config);
   read_binning upBinning(up_config);
   const int nbins = nominalBinning.get_nbins();

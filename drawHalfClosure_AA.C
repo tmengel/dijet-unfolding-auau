@@ -27,14 +27,15 @@ const int color_data = kAzure - 6;
 const float marker_data = 24;
 const float msize_data = 0.9;
 const float lsize_data = 1.1;
-void drawHalfClosure_AA(const int cone_size = 3, const int centrality_bin = 0)
+void drawHalfClosure_AA(const int cone_size = 3, const int centrality_bin = 0,
+                        const std::string configfile = "/sphenix/user/tmengel/dijet-ana-auau/macros/unfolding/dijet-unfolding-auau/configs/binning_AA.config")
 {
   gStyle->SetCanvasPreferGL(0);
   gStyle->SetOptStat(0);
   dlutility::SetyjPadStyle();
 
   const int niterations = 10;
-  read_binning rb(std::getenv("AUAU_CONFIG"));
+  read_binning rb(configfile.c_str());
 
   Double_t first_xj = rb.get_first_xj();
 

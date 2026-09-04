@@ -25,6 +25,9 @@
 
 namespace
 {
+// Per-sample simulation files, set by the drawCOMBModulation_AA_v2 argument
+// below instead of read from TNUPLE_SIM_FILE_JET10/20/30.
+std::array<TString, 3> gSimPaths;
 constexpr double kFlowFitLow = 0.0;
 constexpr double kFlowFitHigh = 2.5;
 constexpr double kNormalizationLow = 0.8;
@@ -869,9 +872,7 @@ std::unique_ptr<TH1D> getCombinedSimulationDphi(
   std::array<double, 3> crossSections = { 0.000003997, 6.218e-8, 2.505e-9};
   std::array<double, 3> eventCounts = {0, 0, 0};
   std::array<TString, 3> paths;
-  paths[0] = std::getenv("TNUPLE_SIM_FILE_JET10");
-  paths[1] = std::getenv("TNUPLE_SIM_FILE_JET20");
-  paths[2] = std::getenv("TNUPLE_SIM_FILE_JET30");
+  paths = gSimPaths;
   for (std::size_t index = 0; index < samples.size(); ++index)
     {
       // paths[index] = Form(
@@ -934,9 +935,7 @@ std::unique_ptr<TH1D> getCombinedSimulationDphi_EtaSeperated(
   << std::endl;
 
 
-  paths[0] = std::getenv("TNUPLE_SIM_FILE_JET10");
-  paths[1] = std::getenv("TNUPLE_SIM_FILE_JET20");
-  paths[2] = std::getenv("TNUPLE_SIM_FILE_JET30");
+  paths = gSimPaths;
   for (std::size_t index = 0; index < samples.size(); ++index)
   {
     // paths[index] = Form("%s/rootfiles/TREE_MATCH_r%02d_v15_%d_new_ProdA_2024-00000030_sumeT.root", rb.get_code_location().c_str(), coneSize, samples[index]);
@@ -1011,11 +1010,30 @@ std::unique_ptr<TH1D> makeRegion(const TH1D *raw, const char *name,
 
 void drawCOMBModulation_AA_v2(const int cone_size = 3,
                            const int centrality_bin = 0,
-                           const std::string config = "binning_AA.config")
+                           const std::string config = "binning_AA.config",
+                           const std::string sim_file_jet10 = "",
+                           const std::string sim_file_jet20 = "",
+                           const std::string sim_file_jet30 = "")
 {
   gStyle->SetOptStat(0);
   // dlutility::SetyjPadStyle();
   PlotUtils::set_style();
+
+  // Per-sample simulation files for the combined-dphi helpers (they need a
+  // tn_stats tree). Passed in rather than read from the environment; bail here
+  // with a clear message instead of failing deep inside the helper.
+  gSimPaths = { TString(sim_file_jet10.c_str()),
+                TString(sim_file_jet20.c_str()),
+                TString(sim_file_jet30.c_str()) };
+  for (const auto &simPath : gSimPaths)
+    {
+      if (simPath.Length() == 0)
+        {
+          std::cerr << "drawCOMBModulation_AA_v2: simulation files not provided"
+                       " -- pass sim_file_jet10/20/30" << std::endl;
+          return;
+        }
+    }
 
 
   read_binning rb(config);

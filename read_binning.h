@@ -16,10 +16,10 @@ public:
       fjer = new TFile(jerfile.c_str(), "r");
       
       penv = new TEnv(configfile.c_str());
-      tntuple_location = std::getenv("DIJET_TNTUPLE_PATH");
-      code_location = std::getenv("DIJET_UNFOLDING_PATH");
-      sim_location = std::getenv("AUAU_SIM_PATH");
-      auau_config = std::getenv("AUAU_CONFIG");
+      // tntuple_location = std::getenv("DIJET_TNTUPLE_PATH");
+      // code_location = std::getenv("DIJET_UNFOLDING_PATH");
+      // sim_location = std::getenv("AUAU_SIM_PATH");
+      // auau_config = std::getenv("AUAU_CONFIG");
 
     }
   std::string get_tntuple_location() 

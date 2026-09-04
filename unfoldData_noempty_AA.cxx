@@ -15,11 +15,13 @@ using std::endl;
 #include "histo_opps.h"
 
 int unfoldData_noempty_AA(
-  const std::string configfile = "binning_AA.config", 
-  const int niterations = 10, 
-  const int cone_size = 3, 
-  const int centrality_bin = 0, 
-  const int primer = 0
+  const std::string configfile = "binning_AA.config",
+  const int niterations = 10,
+  const int cone_size = 3,
+  const int centrality_bin = 0,
+  const int primer = 0,
+  const std::string data_file = "/sphenix/user/tmengel/dijet-ana-auau/rootfiles/data/v004_20260821/TNTUPLE_DIJET_r03_data_v004_20260821_calibrated_merged.root",
+  const bool draw_reference_comparisons = true
 )
 {
   gStyle->SetOptStat(0);
@@ -30,7 +32,6 @@ int unfoldData_noempty_AA(
 
   read_binning rb(configfile.c_str());
   std::string system_string = rb.get_system_string(centrality_bin);
-  std::string data_file = std::getenv("TNUPLE_DATA_FILE");
   std::cout << "Using data file: " << data_file << std::endl;
 
   float mbd_vertex;
@@ -157,7 +158,23 @@ int unfoldData_noempty_AA(
 		using_sys = 1;
 		sys_name = "INCLUSIVE";
 	}
-	if (flavor_sys == 1)
+	// if (flavor_sys == 1)
+	// {
+	// 	using_sys = 1;
+	// 	sys_name = "QQ";
+	// }
+	// else if (flavor_sys == 2)
+	// {
+	// 	using_sys = 1;
+	// 	sys_name = "QGGG";
+	// }
+
+  const bool flavor_mix = (flavor_sys == 3);
+	const double flavor_qq_fraction = rb.get_flavor_qq_fraction();
+	const std::string flavor_suffix = (flavor_sys == 1) ? "_qq" : (flavor_sys == 2) ? "_qg_gg" : "";
+
+
+    if (flavor_sys == 1)
 	{
 		using_sys = 1;
 		sys_name = "QQ";
@@ -166,6 +183,13 @@ int unfoldData_noempty_AA(
 	{
 		using_sys = 1;
 		sys_name = "QGGG";
+	}
+	else if (flavor_sys == 3)
+	{
+		using_sys = 1;
+		// Percent-QQ tag so e.g. 0.5 and 0.2 land on distinct, non-colliding
+		// response/unfold/QA output names (MIX50, MIX20, ...).
+		sys_name = Form("MIX%02d", (int) std::lround(flavor_qq_fraction * 100.0));
 	}
 	if (JER_sys != 0)
 	{
@@ -182,12 +206,6 @@ int unfoldData_noempty_AA(
 		std::cout << "Calculating JES extra = " << JES_sys  << std::endl;
 	}
 
-  bool draw_reference_comparisons = true;
-  if (const char *draw_ref_env = std::getenv("DIJET_DRAW_REFERENCES"))
-  {
-    draw_reference_comparisons = std::atoi(draw_ref_env) != 0;
-  }
-    
   double scale_to_signal[nbins][nbins];
   for (int i = 0; i < nbins; i++)
   {

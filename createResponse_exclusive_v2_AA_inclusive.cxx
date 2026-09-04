@@ -81,6 +81,10 @@ int createResponse_exclusive_v2_AA_inclusive (
 	const bool OVERRIDE_EVENT_WEIGHT = false;
 	const bool DO_CENT_EVENT_WEIGHT = false;
 	const bool DO_CENT_CUT = false;
+
+	const bool DO_FAKES = true;
+	const bool VETO_NULL_WEIGHTS = false;
+	
 	const double prior_var = 0.5;
 	const double prior_norm = 1.0;
 	// Space in which the prior fraction is applied (see priorReweightQA.h):
@@ -733,7 +737,8 @@ int createResponse_exclusive_v2_AA_inclusive (
 				double this_w = mbd_vertex_scale * sumeT_scale;
 				if ( DO_CENT_EVENT_WEIGHT )
 				{
-					this_w = centrality_scale * mbd_vertex_scale;
+					this_w *= centrality_scale;
+					// this_w = centrality_scale * mbd_vertex_scale;
 				}
 
 				if ( not_a_closure_test )
@@ -741,6 +746,9 @@ int createResponse_exclusive_v2_AA_inclusive (
 					event_scale *= this_w;
 				}
 			}
+
+			if ( event_scale <= 0 && VETO_NULL_WEIGHTS ) { continue; }
+
 
 			// leg 1 (index 0 in dijet_matching.C) is always the
 			// truth-leading jet and leg 2 the truth-subleading one --
@@ -889,7 +897,7 @@ int createResponse_exclusive_v2_AA_inclusive (
 				}
 			}
 			
-			if ( fake_pair ) 
+			if ( fake_pair && DO_FAKES ) 
 			{
 			
 				if (use_for_response)

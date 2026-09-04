@@ -18,10 +18,12 @@ using std::endl;
 #include "histo_opps.h"
 
 int unfoldDataUncertainties_noempty_AA(
-  const int niterations = 20, 
-  const int cone_size = 4, 
-  const int centrality_bin = 0, 
-  const int prior = 0
+  const int niterations = 20,
+  const int cone_size = 4,
+  const int centrality_bin = 0,
+  const int prior = 0,
+  const std::string configfile = "/sphenix/user/tmengel/dijet-ana-auau/macros/unfolding/dijet-unfolding-auau/configs/binning_AA.config",
+  const std::string data_file = "/sphenix/user/tmengel/dijet-ana-auau/rootfiles/data/v004_20260821/TNTUPLE_DIJET_r03_data_v004_20260821_calibrated_merged.root"
 )
 {
 
@@ -41,9 +43,9 @@ int unfoldDataUncertainties_noempty_AA(
   std::string system_string = (ispp ? "pp" : "AA_cent_" + std::to_string(centrality_bin));
 
   // read_binning rb("binning_AA.config");
-  read_binning rb(std::getenv("AUAU_CONFIG"));
+  read_binning rb(configfile.c_str());
   // std::string data_file = rb.get_tntuple_location() + "/TNTUPLE_DIJET_AA_r0" + std::to_string(cone_size) + ".root";
-  std::string data_file = std::getenv("TNUPLE_DATA_FILE");
+  std::cout << "Using data file: " << data_file << std::endl;
   // if (ispp)
     // data_file = rb.get_tntuple_location() + "/TNTUPLE_DIJET_r0" + std::to_string(cone_size) + "_v6_6_ana468_2024p012_v001_gl10-all.root";
 
@@ -386,7 +388,7 @@ int unfoldDataUncertainties_noempty_AA(
 
   
   TFile *fout = new TFile(Form("%s/uncertainties/uncertainties_%s_r%02d_%s.root", rb.get_code_location().c_str(), system_string.c_str(),  cone_size, sysname.c_str()),"recreate");
-  TEnv *penv = new TEnv(std::getenv("AUAU_CONFIG"));
+  TEnv *penv = new TEnv(configfile.c_str());
   penv->Write();
   for (int iter = 0; iter < niterations; iter++)
     {

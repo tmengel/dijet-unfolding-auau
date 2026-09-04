@@ -90,7 +90,7 @@ void drawCOMBDataSimSimple_AA_v2(
   const std::string configfile = "binning.config"
 )
 {
-  read_binning rb(std::getenv("AUAU_CONFIG"));
+  read_binning rb(configfile.c_str());
   std::unique_ptr<float[]> ptBins(new float[rb.get_nbins() + 1]);
   rb.get_pt_bins(ptBins.get());
 

@@ -52,7 +52,8 @@ void drawIterationScan(TH1D *h_stat, TH1D *h_unfold, TH1D *h_binbybin,
 
 }
 
-void makeIterationPlot_AA(const int cone_size = 3, const int centrality_bin = 0, const int prior = 0)
+void makeIterationPlot_AA(const int cone_size = 3, const int centrality_bin = 0, const int prior = 0,
+                         const std::string configfile = "/sphenix/user/tmengel/dijet-ana-auau/macros/unfolding/dijet-unfolding-auau/configs/binning_AA.config")
 {
   const int niterations = 10;
 
@@ -64,7 +65,7 @@ void makeIterationPlot_AA(const int cone_size = 3, const int centrality_bin = 0,
   dlutility::SetyjPadStyle();
 
   // read_binning rb("binning_AA.config");
-  read_binning rb(std::getenv("AUAU_CONFIG"));
+  read_binning rb(configfile.c_str());
 
   Int_t read_nbins = rb.get_nbins();
   

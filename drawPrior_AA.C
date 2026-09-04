@@ -2,12 +2,13 @@
 #include "read_binning.h"
 #include "histo_opps.h"
 
-void drawPrior_AA(const int cone_size = 3, const int centrality_bin = 0, const std::string sys_name = "nominal")
+void drawPrior_AA(const int cone_size = 3, const int centrality_bin = 0, const std::string sys_name = "nominal",
+                  const std::string configfile = "/sphenix/user/tmengel/dijet-ana-auau/macros/unfolding/dijet-unfolding-auau/configs/binning_AA.config")
 {
   int color_nom = kBlack;
   int color_p1 = kBlue;
   int color_p2 = kRed;
-  read_binning rb(std::getenv("AUAU_CONFIG"));
+  read_binning rb(configfile.c_str());
 
   Int_t read_nbins = rb.get_nbins();
   std::string dphi_string = rb.get_dphi_string();

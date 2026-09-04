@@ -16,24 +16,39 @@
 R__LOAD_LIBRARY( libmyana.so )
 
 // Inclusive-pairing variant of dijet_pair_matching_v2.C: instead of only
-// the leading truth pair (1,2), the leading truth jet is paired with every
-// other truth jet in the event -- (1,2), (1,3), (1,4), ... -- and each
-// pairing is categorized with the same pair-level scheme and the
-// truth_fail / reco_prov bookkeeping.
+// the leading pair (pT1,pT2), the leading jet is paired with every other
+// jet -- (pT1,pT2), (pT1,pT3), (pT1,pT4), ... -- and each pairing is
+// categorized with exactly the pair-level scheme dijet_pair_matching_v2.C
+// applies to the leading pair.
 //
 // This is to dijet_matching_inclusive.C what dijet_pair_matching_v2.C is
 // to dijet_matching.C.
 //
-// V2 -- the same two changes as dijet_pair_matching_v2.C, applied to the
-// one rank-driven leg this scheme has:
+// THE SCHEME (identical to dijet_pair_matching_v2.C, applied at each rank)
 //
-//  (a) The leading reco leg must be TRUTH-MATCHED. It is the leading
-//      accepted reco jet above 20 GeV that HAS a truth match
-//      (jet_truth_match_idx >= 0), so an unmatched UE fluctuation holding
-//      the leading slot is stepped over instead of taking the leg. Leg 2
-//      was already truth-driven and so always matched. kProvUE therefore
-//      never appears on either leg, and kUESub is never assigned -- the
-//      categories in practice are Fill / Miss / Fake / Skip.
+// The pairing rank is the SAME on both sides. For rank `partner`:
+//
+//   truth pair = truth jets ( 0, partner )
+//                pT-sorted on input, no eta cut at selection time
+//   reco  pair = ( accepted[0], accepted[partner] )
+//                where `accepted` is the event's ACCEPTED, TRUTH-MATCHED
+//                reco jets in pT order -- jet_accept_eta, E > 0,
+//                pT > 8 GeV, jet_truth_match_idx >= 0
+//
+// So both legs are rank-driven on the reco side, just as they are in the
+// exclusive macro: nothing here is truth-driven, and a softer truth jet
+// that outranks the expected leg genuinely takes the slot instead of
+// being stepped over. partner==1 is the leading pair, which reproduces
+// dijet_pair_matching_v2.C bit for bit; partner==2 is (pT1,pT3),
+// partner==3 is (pT1,pT4), and so on.
+//
+// V2 -- the same two changes as dijet_pair_matching_v2.C:
+//
+//  (a) BOTH reco legs must be TRUTH-MATCHED (jet_truth_match_idx >= 0).
+//      An unmatched UE fluctuation is stepped over when the accepted list
+//      is built rather than allowed to take a leg, so kProvUE can never
+//      appear and kUESub is never assigned -- the categories in practice
+//      are Fill / Miss / Fake / Skip / FakeMiss.
 //
 //  (b) The reco dphi requirement no longer gates pair FORMATION. The pair
 //      is built from the two matched legs, reco_dphi is recorded for every
@@ -51,48 +66,35 @@ R__LOAD_LIBRARY( libmyana.so )
 //            yes    |    yes    |          yes           | Fill
 //            yes    |    yes    |          no            | FakeMiss
 //
+//      "reco IS the truth pair" means the two reco legs are the two truth
+//      legs' own dR matches, in either order -- legs_swapped records a
+//      resolution-driven ordering flip between two real legs, which is a
+//      Fill, not a failure.
+//
 //      kFakeMiss is the population where both candidates are in
-//      acceptance but the reco candidate is built from the wrong jets:
-//      it is a fake AND a miss at once, and filling the response from it
-//      would bias the subleading response. In this scheme leg 2 is the
-//      partner's own match by construction, so the wrong leg is always
-//      leg 1 -- the leading slot held by a softer truth jet.
-//
-// RECO SIDE -- per-pairing construction (note the asymmetry):
-//   leg 1 = the leading ACCEPTED, TRUTH-MATCHED reco jet in the event
-//           (pT > 20, jet_accept_eta, E > 0, jet_truth_match_idx >= 0).
-//           Independently ranked, so its provenance is still a real
-//           measurement: reco_prov1 says whether the leading matched reco
-//           slot is the leading truth jet's match or a softer truth jet's.
-//   leg 2 = truth partner j's OWN dR match (truth_jet_reco_match_idx[j]),
-//           required to pass pT > 8, jet_accept_eta, E > 0.
-//
-// Because leg 2 is truth-driven rather than rank-driven, this scheme only
-// ever probes the LEADING slot; what happens in the subleading slot is
-// invisible here by construction -- use dijet_pair_matching_v2.C (where
-// both legs are rank-driven) for that. The real invariant is that leg 2 is
-// ALWAYS one of the two truth legs' own matches -- kProvSub for an
-// ordinary pairing, kProvLead for a swapped one.
-//
-// SWAPPED PAIRS: if the leading accepted matched reco jet IS the partner's
-// own match, the pair is not degenerate -- it is inverted. It is then
-// taken as leg 1 = partner's match, leg 2 = the leading truth jet's match,
-// with legs_swapped = 1, exactly as dijet_pair_matching_v2.C treats a
-// resolution-driven ordering flip between two real legs. If the leading
-// truth jet has no match at all in that situation there is no second leg
-// and no reco pair is formed.
+//      acceptance but the reco candidate is built from the wrong jets: it
+//      is a fake AND a miss at once, and filling the response from it
+//      would bias the subleading response. Either slot can be the wrong
+//      one here, since both are rank-driven.
 //
 // Acceptance (leg 2 uses the subleading threshold set regardless of the
-// partner's actual rank in the event):
+// pairing's actual rank in the event):
 //   truth leg 1(2): pT > 14(7) GeV, truth_jet_accept_eta
 //   reco  leg 1(2): pT > 20(8) GeV, jet_accept_eta, E > 0, truth-matched
-//   the truth pair requires |dphi(1,j)| > 7pi/8; the reco pair's dphi is
-//   required for a Fill rather than for the pair to be formed
+//   the truth pair requires |dphi(1,j)| > 7pi/8; the reco pair's dphi
+//   decides reco_in_acc rather than whether the pair is formed
+//
+// The truth pair is deliberately selected with NO eta cut: keeping it
+// unconditional is what makes it possible to tell a reco jet that is
+// unmatched because its truth partner was excluded by the calorimeter
+// acceptance from a reco jet that is unmatched because it is a UE
+// fluctuation. The per-leg truth_fail bitmask records WHY a truth leg
+// failed, and reco_prov records WHAT each reco leg actually is.
 //
 // Output: one row per (event, pair_partner_rank), for every event with at
 // least 2 truth jets. pair_partner_rank identifies the pairing (1, rank),
-// so rank==2 is the leading dijet pair (1,2), rank==3 is (1,3), etc. --
-// the same convention as dijet_matching_inclusive.C.
+// so rank==2 is the leading dijet pair (pT1,pT2), rank==3 is (pT1,pT3),
+// etc. -- the same convention as dijet_matching_inclusive.C.
 //
 // The namespace is deliberately distinct from dijet_pair_matching.C's
 // DijetPair, dijet_pair_matching_v2.C's DijetPairV2 and
@@ -124,12 +126,12 @@ namespace DijetPairInclusiveV2
     };
 
     // What a selected reco leg actually is, from jet_truth_match_idx.
-    // "Partner" here means the truth jet j of the current pairing.
+    // "Partner" here means the truth jet `partner` of the current pairing.
     enum Prov
     {
         kProvNone       = -1, // no reco leg
         kProvLead       =  0, // matched to truth jet 0 (the leading truth jet)
-        kProvSub        =  1, // matched to truth jet j (this pairing's partner)
+        kProvSub        =  1, // matched to truth jet `partner`
         kProvOtherTruth =  2, // matched to some other truth jet
         kProvUE         =  3  // no truth match at all -> UE fluctuation
     };
@@ -147,7 +149,7 @@ namespace DijetPairInclusiveV2
     struct Config
     {
         float truth_pt_thresh[2] = { 14.0f, 7.0f };
-        float reco_pt_thresh[2]  = { 20.0f, 8.0f };
+        float reco_pt_thresh[2]  = { 5.0f, 8.0f };
         float min_dphi           = 7.0f * TMath::Pi() / 8.0f;
     };
 
@@ -173,18 +175,57 @@ namespace DijetPairInclusiveV2
         int   n_accepted_reco   = 0;
     };
 
-    // Classifies the pairing (truth jet 0, truth jet partner). `r_lead` is
-    // the event's leading accepted TRUTH-MATCHED reco jet index (or -1 if
-    // the event has no matched jet above the leading threshold) and
-    // `n_accepted_reco` the accepted multiplicity above the subleading
-    // floor -- both are event-level, so the caller computes them once and
-    // reuses them across partners.
+    // Builds the event-level list of ACCEPTED, TRUTH-MATCHED reco jets in
+    // pT order. This is exactly the selection dijet_pair_matching_v2.C
+    // applies inside its own classify(); it is lifted out here because
+    // every pairing in the event reuses the same list, and because the
+    // reco pairing rank indexes straight into it.
     //
-    // Pure: no ROOT I/O state, safe to lift into match_standalone.C.
+    // jet_pT is pT-descending on input (sort_reco_jets_by_pt in
+    // match_standalone.C), so `accepted` is pT-descending too: accepted[0]
+    // is the leading accepted matched reco jet, accepted[k] the k-th.
+    inline void build_accepted_reco(
+        const std::vector< float > & jet_pT,
+        const std::vector< float > & jet_E,
+        const std::vector< int >   & jet_accept_eta,
+        const std::vector< int >   & jet_truth_match_idx,
+        const Config & cfg,
+        std::vector< int > & accepted
+    )
+    {
+        accepted.clear();
+        for ( size_t j = 0; j < jet_pT.size(); ++j )
+        {
+            if (
+                jet_accept_eta.at( j )
+                && jet_E.at( j ) > 0.0f
+                && jet_pT.at( j ) > cfg.reco_pt_thresh[1]
+                && jet_truth_match_idx.at( j ) >= 0
+            )
+            {
+                accepted.push_back( static_cast< int >( j ) );
+            }
+        }
+    }
+
+    // Classifies the pairing of rank `partner` -- truth jets (0, partner)
+    // against reco jets (accepted[0], accepted[partner]). partner==1 is
+    // the leading pair (pT1,pT2) and reproduces dijet_pair_matching_v2.C
+    // exactly; partner==2 is (pT1,pT3), partner==3 is (pT1,pT4), and so
+    // on. BOTH sides use the same rank, so the two legs are rank-driven on
+    // the reco side just as they are in the exclusive macro -- nothing
+    // here is truth-driven.
+    //
+    // `accepted` is the event-level list from build_accepted_reco(),
+    // computed once by the caller and reused across every pairing.
+    //
+    // Returns false when this event cannot form the pairing at all (fewer
+    // than partner+1 truth jets), in which case nothing should be written.
+    // Pure otherwise: no ROOT I/O state, safe to lift into
+    // match_standalone.C.
     inline bool classify(
         const int partner,
-        const int r_lead,
-        const int n_accepted_reco,
+        const std::vector< int >   & accepted,
         const std::vector< float > & truth_jet_pT,
         const std::vector< float > & truth_jet_phi,
         const std::vector< int >   & truth_jet_accept_eta,
@@ -198,19 +239,20 @@ namespace DijetPairInclusiveV2
         Result & r
     )
     {
-        if ( truth_jet_pT.size() < 2 ) return false;
         if ( partner < 1 || partner >= static_cast< int >( truth_jet_pT.size() ) ) return false;
 
-        r.n_accepted_reco = n_accepted_reco;
+        r.n_accepted_reco = static_cast< int >( accepted.size() );
 
         //------------------------------------------------------------
         // truth pair (0, partner) -- NO eta cut at selection time, same
-        // as dijet_pair_matching_v2.C: keeping the truth pair unconditional
-        // is what lets truth_fail separate "reco jet is unmatched because
-        // its truth partner was excluded" from "reco jet is a UE jet".
+        // as dijet_pair_matching_v2.C: keeping the truth pair
+        // unconditional is what lets truth_fail separate "reco jet is
+        // unmatched because its truth partner was excluded" from "reco jet
+        // is a UE jet".
         //------------------------------------------------------------
         r.truth_idx[0] = 0;
         r.truth_idx[1] = partner;
+
         r.truth_dphi = AnaUtils::dphi_wrap( truth_jet_phi.at( 0 ), truth_jet_phi.at( partner ) );
         const bool truth_dphi_ok = r.truth_dphi > cfg.min_dphi;
 
@@ -218,63 +260,45 @@ namespace DijetPairInclusiveV2
         {
             const int ti = r.truth_idx[leg];
             int fail = kFailNone;
+
             if ( !( truth_jet_pT.at( ti ) > cfg.truth_pt_thresh[leg] ) ) fail |= kFailPt;
             if ( !truth_jet_accept_eta.at( ti ) )                        fail |= kFailEta;
             if ( !truth_dphi_ok )                                        fail |= kFailDphi;
+
             r.truth_fail[leg] = fail;
 
             const int mi = truth_jet_reco_match_idx.at( ti );
             r.truth_match_idx[leg] = mi;
             r.truth_match_pt[leg]  = ( mi >= 0 ) ? jet_pT.at( mi ) : -999.0f;
         }
+
         r.truth_in_acc = ( r.truth_fail[0] == kFailNone && r.truth_fail[1] == kFailNone ) ? 1 : 0;
 
         const bool has_truth_dijet_candidate = ( r.truth_in_acc == 1 );
 
         //------------------------------------------------------------
-        // reco pair: leg 1 independently ranked, leg 2 truth-driven.
+        // reco pair: built the way the data analysis builds it, from the
+        // accepted reco jets in pT order -- NOT from the truth legs'
+        // matches. The pairing rank is the SAME on both sides, so the
+        // reco counterpart of the truth pairing (0, partner) is
+        // (accepted[0], accepted[partner]).
         //------------------------------------------------------------
-        const int m0 = r.truth_match_idx[0];       // leading truth jet's match
-        const int mj = r.truth_match_idx[1];       // partner's match
-
-        int leg1 = -1, leg2 = -1;
-        if ( r_lead >= 0 )
+        int r1 = -1, r2 = -1;
+        if ( !accepted.empty() && jet_pT.at( accepted[0] ) > cfg.reco_pt_thresh[0] )
         {
-            if ( r_lead == mj )
-            {
-                // the partner's own match holds the leading reco slot --
-                // an inverted, not a degenerate, pair.
-                leg1 = mj;
-                leg2 = m0;              // -1 if the leading truth jet has no match
-                r.legs_swapped = ( m0 >= 0 ) ? 1 : 0;
-            }
-            else
-            {
-                leg1 = r_lead;
-                leg2 = mj;
-            }
+            r1 = accepted[0];
         }
-
-        // leg1 already satisfies the leading requirements by construction
-        // (it is the leading accepted TRUTH-MATCHED reco jet above
-        // reco_pt_thresh[0]); leg2 still has to be checked against the
-        // subleading set. leg2 is truth-driven, so it is matched already.
-        const bool leg2_ok =
-               ( leg2 >= 0 )
-            && ( jet_pT.at( leg2 ) > cfg.reco_pt_thresh[1] )
-            && jet_accept_eta.at( leg2 )
-            && ( jet_E.at( leg2 ) > 0.0f );
-
-        // dphi does not gate pair FORMATION -- it decides whether the
-        // formed pair is a reco dijet CANDIDATE (reco_in_acc), exactly as
-        // in dijet_pair_matching_v2.C. reco_dphi is therefore recorded for
-        // every pair that is formed.
-        if ( leg1 >= 0 && leg2_ok )
+        if ( static_cast< int >( accepted.size() ) > partner
+             && jet_pT.at( accepted[partner] ) > cfg.reco_pt_thresh[1] )
+        {
+            r2 = accepted[partner];
+        }
+        if ( r1 >= 0 && r2 >= 0 )
         {
             r.reco_pair = 1;
-            r.reco_idx[0] = leg1;
-            r.reco_idx[1] = leg2;
-            r.reco_dphi = AnaUtils::dphi_wrap( jet_phi.at( leg1 ), jet_phi.at( leg2 ) );
+            r.reco_idx[0] = r1;
+            r.reco_idx[1] = r2;
+            r.reco_dphi = AnaUtils::dphi_wrap( jet_phi.at( r1 ), jet_phi.at( r2 ) );
 
             for ( int leg = 0; leg < 2; ++leg )
             {
@@ -286,24 +310,18 @@ namespace DijetPairInclusiveV2
                 else if ( ti == partner ) r.reco_prov[leg] = kProvSub;
                 else                      r.reco_prov[leg] = kProvOtherTruth;
             }
-
-            r.reco_in_acc = ( r.reco_dphi >= cfg.min_dphi ) ? 1 : 0;
-        }
-        else
-        {
-            r.legs_swapped = 0; // no pair formed, so nothing was swapped
+            r.reco_in_acc = ( r.reco_dphi >= cfg.min_dphi );
         }
 
-        const bool has_reco_dijet_candidate = ( r.reco_in_acc == 1 );
-        const bool reco_is_matched_to_truth =
-               ( r.reco_prov[0] == kProvLead && r.reco_prov[1] == kProvSub )
-            || ( r.reco_prov[0] == kProvSub  && r.reco_prov[1] == kProvLead );
+        const bool has_reco_dijet_candidate  = ( r.reco_in_acc == 1 );
+        const bool reco_is_matched_to_truth  = (r.reco_prov[0] == kProvLead && r.reco_prov[1] == kProvSub) || (r.reco_prov[0] == kProvSub && r.reco_prov[1] == kProvLead);
 
         //------------------------------------------------------------
         // pair-level category
         //------------------------------------------------------------
+
         if ( !has_truth_dijet_candidate && !has_reco_dijet_candidate ) r.category = kSkip;
-        if ( !has_truth_dijet_candidate &&  has_reco_dijet_candidate ) r.category = kFake;
+        if ( !has_truth_dijet_candidate && has_reco_dijet_candidate ) r.category = kFake;
         if ( has_truth_dijet_candidate )
         {
             if ( !has_reco_dijet_candidate )
@@ -312,17 +330,18 @@ namespace DijetPairInclusiveV2
             }
             else
             {
-                // both reco legs must be the two truth legs' own matches,
-                // in either order (legs_swapped records the order).
-                // Anything else is a fake AND a miss at once: leg 1 is
-                // truth-matched by construction, so a pair that is not the
-                // right pair is a real reco dijet built from the wrong
-                // jets, not a UE substitution.
-                r.category = reco_is_matched_to_truth ? kFill : kFakeMiss;
+                if ( reco_is_matched_to_truth )
+                {
+                    r.category = kFill;
+                }
+                else
+                {
+                    r.category = kFakeMiss;
+                }
+                r.legs_swapped = ( r.reco_prov[0] == kProvSub && r.reco_prov[1] == kProvLead ) ? 1 : 0;
             }
-        }
-        if ( r.category != kFill ) r.legs_swapped = 0;
 
+        }
         return true;
     }
 }
@@ -529,8 +548,8 @@ int dijet_pair_matching_inclusive_v2(
     tout -> Branch( "reco_xj", &o_reco_xj, "reco_xj/F" );
     // -1 no leg, 0 leading truth jet's match, 1 this pairing's partner's
     //  match, 2 some other truth jet, 3 no truth match (UE).
-    // leg 2 is truth-driven, so reco_prov2 is always 1 (ordinary pair) or
-    // 0 (swapped pair) when a pair exists -- never 2 or 3.
+    // Both legs are rank-driven, so either can come back as 2; 3 cannot
+    // appear, since both legs are required to be truth-matched.
     tout -> Branch( "reco_prov1", &o_reco_prov1, "reco_prov1/I" );
     tout -> Branch( "reco_prov2", &o_reco_prov2, "reco_prov2/I" );
     tout -> Branch( "reco_truth_idx1", &o_reco_truth_idx1, "reco_truth_idx1/I" );
@@ -550,10 +569,14 @@ int dijet_pair_matching_inclusive_v2(
     long n_cat_r2[6] = { 0, 0, 0, 0, 0, 0 };
     long n_swapped = 0;
     long n_ue_by_unmatched = 0, n_ue_by_other_truth = 0;
-    // kFakeMiss breakdown. Leg 2 is the partner's own match by
-    // construction, so in this scheme the wrong leg is always leg 1.
-    long n_fm_lead_other_truth = 0, n_fm_lead_is_truth_sub = 0;
-    long n_fm_truth_lead_unmatched = 0;
+    // kFakeMiss breakdown, the same one dijet_pair_matching_v2.C prints:
+    // both legs are rank-driven here, so either can be the wrong one.
+    long n_fm_lead_wrong = 0, n_fm_sub_wrong = 0, n_fm_both_wrong = 0;
+    long n_fm_legs_other_truth = 0;
+    long n_fm_truth_lead_unmatched = 0, n_fm_truth_sub_unmatched = 0;
+
+    // reused across events so the per-event rebuild does not reallocate
+    std::vector< int > accepted;
 
     for ( int i = 0; i < nentries; ++i )
     {
@@ -561,29 +584,15 @@ int dijet_pair_matching_inclusive_v2(
         if ( truth_jet_pT -> size() < 2 ) continue; // no truth pairing possible
 
         //------------------------------------------------------------
-        // event-level reco quantities, computed once and reused across
-        // every pairing in this event.
+        // event-level reco jet list, computed once and reused across every
+        // pairing in this event. Identical to the selection inside
+        // dijet_pair_matching_v2.C's classify(), so the two macros'
+        // n_accepted_reco mean the same thing; the pairing rank indexes
+        // straight into it, accepted[0] being the leading accepted
+        // matched reco jet.
         //------------------------------------------------------------
-        int r_lead = -1;
-        int n_accepted_reco = 0;
-        for ( size_t j = 0; j < jet_pT -> size(); ++j )
-        {
-            if ( !( jet_accept_eta -> at( j ) && jet_E -> at( j ) > 0.0f ) ) continue;
-            // jet_pT is pT-descending on input (sort_reco_jets_by_pt in
-            // match_standalone.C), so the first accepted jet that has a
-            // truth match is the leading MATCHED one. Unmatched (UE) jets
-            // above threshold are stepped over rather than taking the slot.
-            if ( r_lead < 0
-                 && jet_pT -> at( j ) > cfg.reco_pt_thresh[0]
-                 && jet_truth_match_idx -> at( j ) >= 0 )
-            {
-                r_lead = static_cast< int >( j );
-            }
-            // matched-only, the same population dijet_pair_matching_v2.C
-            // counts, so the two macros' n_accepted_reco mean the same thing
-            if ( jet_pT -> at( j ) > cfg.reco_pt_thresh[1]
-                 && jet_truth_match_idx -> at( j ) >= 0 ) ++n_accepted_reco;
-        }
+        DijetPairInclusiveV2::build_accepted_reco(
+            *jet_pT, *jet_E, *jet_accept_eta, *jet_truth_match_idx, cfg, accepted );
 
         ++n_events;
 
@@ -598,7 +607,7 @@ int dijet_pair_matching_inclusive_v2(
         {
             DijetPairInclusiveV2::Result r;
             if ( !DijetPairInclusiveV2::classify(
-                     partner, r_lead, n_accepted_reco,
+                     partner, accepted,
                      *truth_jet_pT, *truth_jet_phi, *truth_jet_accept_eta, *truth_jet_reco_match_idx,
                      *jet_pT, *jet_phi, *jet_E, *jet_accept_eta, *jet_truth_match_idx,
                      cfg, r ) )
@@ -618,13 +627,27 @@ int dijet_pair_matching_inclusive_v2(
             }
             else if ( r.category == DijetPairInclusiveV2::kFakeMiss )
             {
-                // what is holding the leading slot instead of this
-                // pairing's expected leg
-                if ( r.reco_prov[0] == DijetPairInclusiveV2::kProvOtherTruth ) ++n_fm_lead_other_truth;
-                if ( r.reco_prov[0] == DijetPairInclusiveV2::kProvSub )        ++n_fm_lead_is_truth_sub;
-                // "no reco match at all" means the leading truth jet was
-                // never reconstructed; otherwise it was simply outranked.
+                // both candidates are in acceptance but the reco pair is
+                // built from the wrong jets. Both legs are rank-driven, so
+                // record which slot is wrong and what is sitting in it --
+                // the same breakdown dijet_pair_matching_v2.C prints.
+                const bool lead_ok = ( r.reco_prov[0] == DijetPairInclusiveV2::kProvLead
+                                    || r.reco_prov[0] == DijetPairInclusiveV2::kProvSub );
+                const bool sub_ok  = ( r.reco_prov[1] == DijetPairInclusiveV2::kProvLead
+                                    || r.reco_prov[1] == DijetPairInclusiveV2::kProvSub );
+                if      ( !lead_ok && !sub_ok ) ++n_fm_both_wrong;
+                else if ( !lead_ok )            ++n_fm_lead_wrong;
+                else                            ++n_fm_sub_wrong;
+
+                for ( int leg = 0; leg < 2; ++leg )
+                {
+                    if ( r.reco_prov[leg] == DijetPairInclusiveV2::kProvOtherTruth ) ++n_fm_legs_other_truth;
+                }
+
+                // "no reco match at all" means the truth leg was never
+                // reconstructed; otherwise it was simply outranked.
                 if ( r.truth_match_idx[0] < 0 ) ++n_fm_truth_lead_unmatched;
+                if ( r.truth_match_idx[1] < 0 ) ++n_fm_truth_sub_unmatched;
             }
 
             o_event_id = event_id;
@@ -712,21 +735,24 @@ int dijet_pair_matching_inclusive_v2(
               << ", UESub: " << n_cat_r2[4]
               << ", FakeMiss: " << n_cat_r2[5]
               << "   <- compare against dijet_pair_matching_v2.C" << std::endl;
-    std::cout << "  swapped pairs (partner's match held the leading slot): " << n_swapped << std::endl;
-    std::cout << "  UESub leading slot held by an unmatched (UE) jet: " << n_ue_by_unmatched
+    std::cout << "  Fill pairs with the reco legs pT-swapped: " << n_swapped << std::endl;
+    std::cout << "  UESub legs taken by an unmatched (UE) jet: " << n_ue_by_unmatched
               << ", by a softer truth jet: " << n_ue_by_other_truth << std::endl;
-    std::cout << "  FakeMiss leading slot held by a softer truth jet: " << n_fm_lead_other_truth
-              << ", by the partner's own match: " << n_fm_lead_is_truth_sub
-              << " | leading truth jet with no reco match at all: "
-              << n_fm_truth_lead_unmatched << std::endl;
+    std::cout << "  FakeMiss wrong leg -- leading: " << n_fm_lead_wrong
+              << ", subleading: " << n_fm_sub_wrong
+              << ", both: " << n_fm_both_wrong << std::endl;
+    std::cout << "           legs held by a softer truth jet: " << n_fm_legs_other_truth
+              << " | truth leg with no reco match at all -- leading: " << n_fm_truth_lead_unmatched
+              << ", partner: " << n_fm_truth_sub_unmatched << std::endl;
     std::cout << "  categorized: "
               << ( n_cat[0] + n_cat[1] + n_cat[2] + n_cat[3] + n_cat[4] + n_cat[5] )
               << " / " << n_rows << std::endl;
     std::cout << "  misses (Miss + FakeMiss): " << ( n_cat[1] + n_cat[5] )
               << " | fakes (Fake + FakeMiss): " << ( n_cat[2] + n_cat[5] ) << std::endl;
-    std::cout << "  NOTE: leg 2 is truth-driven here, so subleading-slot"
-              << " substitution is invisible by construction --" << std::endl;
-    std::cout << "        use dijet_pair_matching_v2.C for that." << std::endl;
+    std::cout << "  NOTE: both legs are rank-driven, on the truth side and on the"
+              << " reco side, at the SAME pairing rank --" << std::endl;
+    std::cout << "        rank 2 is therefore bit-identical to dijet_pair_matching_v2.C."
+              << std::endl;
 
     fout -> cd();
     tout -> Write();

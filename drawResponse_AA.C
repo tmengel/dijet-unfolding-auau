@@ -3,7 +3,8 @@
 
 #include "PlotUtils.h"
 
-void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0, const std::string sys_name = "nominal")
+void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0, const std::string sys_name = "nominal",
+                     const std::string configfile = "/sphenix/user/tmengel/dijet-ana-auau/macros/unfolding/dijet-unfolding-auau/configs/binning_AA.config")
 {
 
 
@@ -11,7 +12,7 @@ void drawResponse_AA(const int cone_size = 3, const int centrality_bin = 0, cons
   gStyle->SetOptTitle(0);
   // #include "PlotUtils.h"
   PlotUtils::set_sphenix_style();
-  read_binning rb(std::getenv("AUAU_CONFIG"));
+  read_binning rb(configfile.c_str());
 
   Int_t read_nbins = rb.get_nbins();
 

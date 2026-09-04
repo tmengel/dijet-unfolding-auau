@@ -124,7 +124,7 @@ namespace DijetPairV2
     struct Config
     {
         float truth_pt_thresh[2] = { 14.0f, 7.0f };
-        float reco_pt_thresh[2]  = { 20.0f, 8.0f };
+        float reco_pt_thresh[2]  = { 25.0f, 8.0f };
         float min_dphi           = 7.0f * TMath::Pi() / 8.0f;
         // false (default): subleading reco jet is the 2nd-highest-pT
         //   accepted jet, then dphi is required of that pair -- the
@@ -266,7 +266,7 @@ namespace DijetPairV2
         // pair-level category
         //------------------------------------------------------------
 
-        if ( !has_truth_dijet_candidate && !has_reco_dijet_candidate ) r.category = kSkip;
+        if ( !has_truth_dijet_candidate && !has_reco_dijet_candidate ) return false;
         if ( !has_truth_dijet_candidate && has_reco_dijet_candidate ) r.category = kFake;
         if ( has_truth_dijet_candidate )
         {
@@ -530,9 +530,10 @@ int dijet_pair_matching_v2(
 
         DijetPairV2::Result r;
         if ( !DijetPairV2::classify(
-                 *truth_jet_pT, *truth_jet_phi, *truth_jet_accept_eta, *truth_jet_reco_match_idx,
-                 *jet_pT, *jet_phi, *jet_E, *jet_accept_eta, *jet_truth_match_idx,
-                 cfg, r ) )
+            *truth_jet_pT, *truth_jet_phi, *truth_jet_accept_eta, *truth_jet_reco_match_idx,
+            *jet_pT, *jet_phi, *jet_E, *jet_accept_eta, *jet_truth_match_idx,
+            cfg, r ) 
+        )
         {
             continue; // no truth dijet candidate to report
         }
