@@ -1,13 +1,14 @@
 # install
+
 install/
 results/
 archive/
-macros/unfolding/
+
 .agents
 .codex
 .claude
 
-external/
+external
 
 # for dstlists
 *.list
