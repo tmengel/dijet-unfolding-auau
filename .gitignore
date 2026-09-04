@@ -2,7 +2,7 @@
 install/
 results/
 archive/
-
+macros/unfolding/
 .agents
 .codex
 .claude
