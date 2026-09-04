@@ -12,6 +12,7 @@
 #include "TTree.h"
 #include "TRandom.h"
 #include "TStyle.h"
+#include "TParameter.h"
 
 #include "RooUnfoldResponse.h"
 #include "RooUnfoldBayes.h"
@@ -85,7 +86,7 @@ int createResponse_exclusive_v2_AA (
 
 	const bool OVERRIDE_EVENT_WEIGHT = false;
 	const bool DO_CENT_EVENT_WEIGHT = false;
-	const bool DO_CENT_CUT = false;
+	const bool DO_CENT_CUT = true;
 	
 	const bool DO_FAKES = true;
 	const bool VETO_NULL_WEIGHTS = false;
@@ -230,6 +231,15 @@ int createResponse_exclusive_v2_AA (
 		if (!texcl[i])
 		{
 			std::cerr << "Missing tree T in " << path << std::endl;
+			return 1;
+		}
+
+		if ( !texcl[i]->GetBranch("truth_lead_pt") )
+		{
+			std::cerr << "Missing truth_lead_pt branch in " << path << " -- this file was written "
+			          << "by an older dijet_pair_matching_v3.C. Regenerate it before running this "
+			          << "macro (SetBranchAddress would otherwise fail silently and the pT-hat "
+			          << "sample-boundary veto below would run on uninitialized memory)." << std::endl;
 			return 1;
 		}
 
@@ -547,6 +557,19 @@ int createResponse_exclusive_v2_AA (
 	// same closure the console printout at the end of the event loop checks
 	// numerically.
 	TH1D *h_jetv2_weight = new TH1D("h_jetv2_weight", ";jet-v2 cross-check weight;counts", 200, 0.5, 1.5);
+
+	// Proof-of-injection: <weight> profiled against each leg's own truth
+	// angle to the event plane. Since the other leg's dpsi2 is independent
+	// and averages its cosine term to ~0, this should trace out the
+	// injected 1 + 2*v2*cos(2*dpsi2) modulation on its own -- a flat line
+	// here (instead of a cosine) would mean the reweighting is not actually
+	// depending on dpsi2 as intended. dpsi2 is already folded into
+	// [0, pi/2] (see jetv2_dpsi2 above / the tree's own dpsi2 branch), where
+	// cos(2*dpsi2) still spans its full [-1, 1] range.
+	TProfile *h_jetv2_weight_vs_dpsi2_leg1 = new TProfile("h_jetv2_weight_vs_dpsi2_leg1",
+	  ";#Delta#psi_{2} (leg 1, truth);#LTjet-v2 weight#GT", 20, 0.0, TMath::Pi() / 2.0);
+	TProfile *h_jetv2_weight_vs_dpsi2_leg2 = new TProfile("h_jetv2_weight_vs_dpsi2_leg2",
+	  ";#Delta#psi_{2} (leg 2, truth);#LTjet-v2 weight#GT", 20, 0.0, TMath::Pi() / 2.0);
 
 	// pure fills
 	TH1D *h_truth_xj = new TH1D("h_truth_xj",";A_{J};1/N", nbins, ixj_bins);
@@ -970,6 +993,8 @@ int createResponse_exclusive_v2_AA (
 				jetv2_c2_sum += psi2_weight * c2;
 				jetv2_weight_n++;
 				h_jetv2_weight->Fill(psi2_weight);
+				h_jetv2_weight_vs_dpsi2_leg1->Fill(b_dpsi2[istream], psi2_weight);
+				h_jetv2_weight_vs_dpsi2_leg2->Fill(jetv2_dpsi2(psi2_val, truth_phi2_val), psi2_weight);
 			}
 
 			double event_scale 			= scale_factor[isample] * extra_scale[istream] * psi2_weight;
@@ -1956,6 +1981,14 @@ int createResponse_exclusive_v2_AA (
 			h_pt1pt2->Write();
 			h_e1e2->Write();
 			h_jetv2_weight->Write();
+			h_jetv2_weight_vs_dpsi2_leg1->Write();
+			h_jetv2_weight_vs_dpsi2_leg2->Write();
+			// Saved so a downstream draw macro can overlay the analytic
+			// 1 + jetv2_amp*cos(2*dpsi2) curve on the profiles above without
+			// re-deriving amp (a data-driven normalization solved in the
+			// pre-pass, not simply JETV2_SCALE or 2*JETV2_SCALE -- see the
+			// pre-pass comment above).
+			TParameter<double>("jetv2_amp", jetv2_amp).Write();
 			// Unweighted trimming inputs, saved so minentries_truth/minentries_link
 			// can be tuned offline without re-running the event loop.
 			h_count_flat_truth_pt1pt2->Write();

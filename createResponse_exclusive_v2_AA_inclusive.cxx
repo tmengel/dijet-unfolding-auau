@@ -80,7 +80,7 @@ int createResponse_exclusive_v2_AA_inclusive (
 
 	const bool OVERRIDE_EVENT_WEIGHT = false;
 	const bool DO_CENT_EVENT_WEIGHT = false;
-	const bool DO_CENT_CUT = false;
+	const bool DO_CENT_CUT = true;
 
 	const bool DO_FAKES = true;
 	const bool VETO_NULL_WEIGHTS = false;
@@ -174,6 +174,15 @@ int createResponse_exclusive_v2_AA_inclusive (
 		if (!texcl[i])
 		{
 			std::cerr << "Missing tree T in " << path << std::endl;
+			return 1;
+		}
+
+		if ( !texcl[i]->GetBranch("truth_lead_pt") )
+		{
+			std::cerr << "Missing truth_lead_pt branch in " << path << " -- this file was written "
+			          << "by an older dijet_pair_matching_inclusive_v3.C. Regenerate it before "
+			          << "running this macro (SetBranchAddress would otherwise fail silently and "
+			          << "leave b_truth_lead_pt reading uninitialized memory)." << std::endl;
 			return 1;
 		}
 
@@ -677,10 +686,10 @@ int createResponse_exclusive_v2_AA_inclusive (
 			// necessarily the event's actual leading truth jet.
 			const float maxpttruth_val = truth_lead_pt_val;
 			const bool in_maxpttruth_range = ( maxpttruth_val >= sample_boundary[isample] && maxpttruth_val < sample_boundary[isample+1] );
-			// if ( !in_maxpttruth_range )
-			// {
-			// 	continue;
-			// }
+			if ( !in_maxpttruth_range )
+			{
+				continue;
+			}
 
 			const bool in_centrality_bin = ( cent_val >= icentrality_bins[centrality_bin] && cent_val < icentrality_bins[centrality_bin+1] );
 			if ( !in_centrality_bin && DO_CENT_CUT )
